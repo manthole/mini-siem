@@ -1,0 +1,13 @@
+id: WEB_INJECTION
+title: Tentative d'injection web (SQLi / XSS / traversée)
+type: match
+level: high
+attack: T1190
+tactic: Initial Access
+description: >
+  L'URL contient un motif caractéristique d'injection SQL, de cross-site
+  scripting ou de traversée de répertoire (exploitation d'une application web).
+selection:
+  event_type: web_request
+  url:
+    regex: "(?:union(?:\\s|\\+|%20)+select|or(?:\\s|\\+|%20)+1=1|<script|%3Cscript|\\.\\./|%2e%2e%2f|/etc/passwd|' or '|information_schema)"

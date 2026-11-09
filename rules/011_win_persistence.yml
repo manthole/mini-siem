@@ -1,0 +1,15 @@
+id: WIN_GROUP_ADD
+title: Ajout à un groupe privilégié
+type: match
+level: high
+attack: T1098
+tactic: Persistence
+description: >
+  Un compte a été ajouté à un groupe local (Event ID 4732). Vers un groupe
+  d'administration (Administrators), c'est une technique de persistance et
+  d'escalade fréquente après compromission.
+selection:
+  event_id: 4732
+group_by:
+  - user
+  - detail

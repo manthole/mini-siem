@@ -1,0 +1,16 @@
+id: PORT_SCAN
+title: Scan de ports
+type: threshold
+level: medium
+attack: T1046
+tactic: Discovery
+description: >
+  Une même IP a été bloquée par le pare-feu sur un grand nombre de ports
+  distincts en peu de temps : balayage de ports à la recherche de services.
+selection:
+  event_type: fw_block
+group_by:
+  - source_ip
+window_seconds: 60
+distinct: dest_port
+count: 20

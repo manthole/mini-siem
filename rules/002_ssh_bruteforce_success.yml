@@ -1,0 +1,20 @@
+id: SSH_BRUTEFORCE_SUCCESS
+title: Brute force SSH réussi
+type: sequence
+level: critical
+attack: T1110
+tactic: Credential Access
+description: >
+  Plusieurs échecs SSH depuis une IP, suivis d'une connexion réussie depuis
+  la même IP. Forte présomption de compromission d'un compte : à traiter en
+  priorité.
+precondition:
+  event_type: ssh_login
+  outcome: failure
+trigger:
+  event_type: ssh_login
+  outcome: success
+group_by:
+  - source_ip
+window_seconds: 600
+min_preconditions: 5

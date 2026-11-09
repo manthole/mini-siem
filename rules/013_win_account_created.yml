@@ -1,0 +1,14 @@
+id: WIN_ACCOUNT_CREATED
+title: Création de compte utilisateur
+type: match
+level: medium
+attack: T1136.001
+tactic: Persistence
+description: >
+  Un compte utilisateur a été créé (Event ID 4720). Légitime en administration,
+  mais à corréler : un compte créé juste après une compromission est un moyen
+  de persistance.
+selection:
+  event_id: 4720
+group_by:
+  - user

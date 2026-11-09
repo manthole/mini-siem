@@ -1,0 +1,13 @@
+{
+  "_comment": "Flux de menace de DÉMONSTRATION. IP de documentation (RFC 5737), catégories et sources fictives. En production, remplacer par un vrai feed via MINISIEM_CTI_FEED (Feodo Tracker, blocklist.de, AbuseIPDB, Tor exit nodes, export MISP/OTX...).",
+  "feed": "CTI démo",
+  "indicators": [
+    {"type": "ip", "value": "203.0.113.66", "category": "bruteforce", "confidence": 85, "source": "blocklist.de (démo)", "first_seen": "2026-10-02"},
+    {"type": "ip", "value": "198.51.100.23", "category": "c2", "confidence": 95, "source": "Feodo Tracker (démo)", "first_seen": "2026-09-14"},
+    {"type": "ip", "value": "203.0.113.9", "category": "scanner", "confidence": 80, "source": "AbuseIPDB (démo)", "first_seen": "2026-10-20"},
+    {"type": "ip", "value": "198.51.100.77", "category": "scanner", "confidence": 75, "source": "blocklist.de (démo)", "first_seen": "2026-10-25"},
+    {"type": "ip", "value": "203.0.113.200", "category": "c2", "confidence": 92, "source": "Feodo Tracker (démo)", "first_seen": "2026-11-01"},
+    {"type": "url_substring", "value": "${jndi:", "category": "exploit", "confidence": 99, "source": "règle interne"},
+    {"type": "user_agent", "value": "sqlmap", "category": "tool", "confidence": 85, "source": "règle interne"}
+  ]
+}

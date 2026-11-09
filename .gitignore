@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+rapport.html
+alerts.json
+sigma/
+.pytest_cache/
+.venv/
+# Fichiers de sortie / artefacts

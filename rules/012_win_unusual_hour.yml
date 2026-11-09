@@ -1,0 +1,15 @@
+id: WIN_UNUSUAL_HOUR
+title: Connexion à une heure inhabituelle
+type: baseline_hour
+level: medium
+attack: T1078
+tactic: Initial Access
+description: >
+  Ouverture de session réussie à une heure où l'utilisateur ne se connecte
+  habituellement jamais (comparé à sa propre baseline). Peut signaler
+  l'usage d'un compte valide volé.
+selection:
+  event_id: 4624
+group_by:
+  - user
+min_support: 2

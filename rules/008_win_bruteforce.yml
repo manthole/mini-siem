@@ -1,0 +1,15 @@
+id: WIN_BRUTEFORCE
+title: Brute force de connexion Windows
+type: threshold
+level: high
+attack: T1110.001
+tactic: Credential Access
+description: >
+  Nombreux échecs d'ouverture de session Windows (Event ID 4625) depuis une
+  même IP : tentative de brute force, souvent via RDP ou SMB.
+selection:
+  event_id: 4625
+group_by:
+  - source_ip
+window_seconds: 300
+count: 10

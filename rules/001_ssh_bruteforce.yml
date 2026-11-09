@@ -1,0 +1,16 @@
+id: SSH_BRUTEFORCE
+title: Brute force SSH
+type: threshold
+level: high
+attack: T1110.001
+tactic: Credential Access
+description: >
+  Un grand nombre d'échecs d'authentification SSH proviennent d'une même
+  adresse IP sur une courte période, signe d'une attaque par force brute.
+selection:
+  event_type: ssh_login
+  outcome: failure
+group_by:
+  - source_ip
+window_seconds: 300
+count: 10

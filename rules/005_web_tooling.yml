@@ -1,0 +1,20 @@
+id: WEB_ATTACK_TOOL
+title: Outil d'attaque web détecté (user-agent)
+type: match
+level: high
+attack: T1595.002
+tactic: Reconnaissance
+description: >
+  Le user-agent correspond à un scanner de vulnérabilités connu
+  (sqlmap, nikto, nmap, dirbuster...). Reconnaissance active ciblant le site.
+selection:
+  event_type: web_request
+  user_agent:
+    contains:
+      - sqlmap
+      - nikto
+      - nmap
+      - masscan
+      - dirbuster
+      - gobuster
+      - wpscan

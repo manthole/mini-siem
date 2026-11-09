@@ -1,0 +1,15 @@
+# Configuration optionnelle du mini-SIEM.
+# Copier en config.yml et passer --config config.yml à analyze.py.
+
+allowlist:
+  # IP ou plages CIDR de confiance : leurs alertes sont supprimées.
+  ips:
+    - 10.0.0.0/8
+    - 192.168.0.0/16
+  # Comptes de confiance (scripts, supervision...).
+  users:
+    - nagios
+    - backup-svc
+
+# Règles à désactiver, par leur id.
+disabled_rules: []

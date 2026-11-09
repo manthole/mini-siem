@@ -1,0 +1,8 @@
+{
+  "_comment": "Données de DÉMONSTRATION uniquement. Les IP sont des plages de documentation (RFC 5737) ; les pays et coordonnées sont fictifs, pour illustrer la carte sans base MaxMind. En production, poser un .mmdb et pointer MINISIEM_GEOIP_DB.",
+  "203.0.113.66": {"country": "Russie", "city": "Moscou", "lat": 55.7558, "lon": 37.6173},
+  "198.51.100.23": {"country": "Chine", "city": "Shanghai", "lat": 31.2304, "lon": 121.4737},
+  "203.0.113.9":   {"country": "Pays-Bas", "city": "Amsterdam", "lat": 52.3676, "lon": 4.9041},
+  "198.51.100.77": {"country": "Brésil", "city": "São Paulo", "lat": -23.5505, "lon": -46.6333},
+  "203.0.113.200": {"country": "Iran", "city": "Téhéran", "lat": 35.6892, "lon": 51.3890}
+}

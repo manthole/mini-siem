@@ -1,0 +1,16 @@
+id: WEB_SCAN
+title: Scan web (énumération de ressources)
+type: threshold
+level: medium
+attack: T1595.003
+tactic: Reconnaissance
+description: >
+  Une même IP génère un grand nombre d'erreurs 404 en peu de temps : signe
+  d'un outil qui énumère des chemins (fichiers de config, pages d'admin).
+selection:
+  event_type: web_request
+  status: 404
+group_by:
+  - source_ip
+window_seconds: 60
+count: 20

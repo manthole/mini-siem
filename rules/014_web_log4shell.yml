@@ -1,0 +1,13 @@
+id: WEB_LOG4SHELL
+title: Tentative d'exploitation Log4Shell (CVE-2021-44228)
+type: match
+level: critical
+attack: T1190
+tactic: Initial Access
+description: >
+  Motif d'injection JNDI caractéristique de Log4Shell dans l'URL ou l'en-tête.
+  Vise l'exécution de code à distance via Log4j. À traiter en priorité.
+selection:
+  event_type: web_request
+  url:
+    regex: "(?:\\$\\{jndi:(?:ldap|ldaps|rmi|dns)|%24%7bjndi)"

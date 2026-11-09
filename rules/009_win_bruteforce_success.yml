@@ -1,0 +1,17 @@
+id: WIN_BRUTEFORCE_SUCCESS
+title: Brute force Windows réussi
+type: sequence
+level: critical
+attack: T1110
+tactic: Credential Access
+description: >
+  Plusieurs échecs (4625) suivis d'une ouverture de session réussie (4624)
+  depuis la même IP. Forte présomption de compromission de compte.
+precondition:
+  event_id: 4625
+trigger:
+  event_id: 4624
+group_by:
+  - source_ip
+window_seconds: 600
+min_preconditions: 5

@@ -1,0 +1,13 @@
+id: SUDO_NOT_IN_SUDOERS
+title: Tentative d'escalade de privilèges via sudo
+type: match
+level: medium
+attack: T1548.003
+tactic: Privilege Escalation
+description: >
+  Un utilisateur a tenté d'exécuter une commande via sudo sans y être
+  autorisé (« user NOT in sudoers »). Peut indiquer une tentative d'escalade
+  de privilèges depuis un compte déjà compromis.
+selection:
+  event_type: sudo
+  outcome: failure
