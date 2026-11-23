@@ -249,3 +249,7 @@ normal ne génère **aucune** alerte (contrôle des faux positifs).
 
 Projet à but pédagogique et défensif. Les données d'exemple sont **synthétiques**
 (générées par `generate_logs.py`). N'analysez que des logs qui vous appartiennent.
+
+## Licence
+
+Code et documentation sous [licence MIT](LICENSE) © 2026 Manthole : libre réutilisation, y compris commerciale, à condition de conserver la mention de copyright.
