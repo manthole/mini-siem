@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         outdir = Path(args.export_sigma)
         outdir.mkdir(parents=True, exist_ok=True)
         for r in rules:
-            (outdir / f"{r['id'].lower()}.yml").write_text(rule_to_sigma(r), encoding="utf-8")
+            (outdir / f"{r['id'].lower()}.yml").write_text(rule_to_sigma(r, rules), encoding="utf-8")
         print(f"[+] {len(rules)} règles exportées en Sigma dans {outdir}")
         return 0
 
@@ -94,8 +94,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[+] {len(alerts)} alerte(s) :")
     for a in sorted(alerts, key=lambda a: SEVERITY_ORDER.get(a.severity, 9)):
         ip = a.source_ip or "-"
+        grouped = f"  ↳ incident {a.grouped_in}" if a.grouped_in else ""
         print(f"    - [{a.severity.upper():8}] {a.title}  ip={ip} "
-              f"user={a.user or '-'} x{a.count}  {a.attack}")
+              f"user={a.user or '-'} x{a.count}  {a.attack}{grouped}")
 
     Path(args.out).write_text(render_report(alerts, events), encoding="utf-8")
     print(f"[+] rapport écrit : {args.out}")

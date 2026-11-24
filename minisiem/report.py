@@ -6,7 +6,6 @@ répartition par sévérité. Lisible hors ligne même si le CDN est bloqué
 """
 from __future__ import annotations
 
-import html
 import json
 from collections import Counter
 from datetime import datetime
@@ -15,6 +14,14 @@ from jinja2 import Template
 
 from .events import Alert, Event, SEVERITY_ORDER
 
+def _js(obj) -> str:
+    """JSON à placer dans un <script> : « < », « > » et « & » sont échappés, pour qu'une
+    valeur venue d'un journal (« </script><script>… ») ne puisse pas fermer le bloc."""
+    return (json.dumps(obj, ensure_ascii=False)
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
+
+
+# autoescape : toute valeur issue des journaux (compte, IP, chemin…) est échappée.
 _TEMPLATE = Template(r"""<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -159,8 +166,9 @@ _TEMPLATE = Template(r"""<!DOCTYPE html>
       <td>{{ a.title }}
         {% if a.threat %}<br><span class="cti"><i>⚠</i> connu — {{ a.threat.source }}
           ({{ a.threat.category }}, {{ a.threat.confidence }}%)</span>{% endif %}
+        {% if a.grouped_in %}<br><span class="cti">↳ regroupée dans l'incident {{ a.grouped_in }}</span>{% endif %}
         <details><summary>{{ a.count }} preuve(s)</summary>
-          <pre>{{ a.evidence_html }}</pre></details>
+          <pre>{{ a.evidence_text }}</pre></details>
       </td>
       <td><code>{{ a.source_ip or "-" }}</code>{% if a.country %}<br><span style="color:var(--muted);font-size:12.5px">{{ a.country }}{% if a.city %} · {{ a.city }}{% endif %}</span>{% endif %}</td>
       <td>{{ a.user or "-" }}</td>
@@ -205,6 +213,8 @@ if (window.Chart && tlEl && TL_L.length) {
                y:{ticks:{color:'#9aa0ad'},grid:{color:'#272b36'},beginAtZero:true} } } });
 }
 const PTS = {{ map_points_json|safe }};
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const mapEl = document.getElementById('map');
 if (window.L && mapEl && PTS.length) {
   const map = L.map('map', {scrollWheelZoom:false}).setView([25, 10], 2);
@@ -215,12 +225,12 @@ if (window.L && mapEl && PTS.length) {
     L.circleMarker([p.lat, p.lon], {radius:7, color:colors[p.severity]||'#888',
       fillColor:colors[p.severity]||'#888', fillOpacity:0.7, weight:2})
      .addTo(map)
-     .bindPopup(`<b>${p.ip}</b><br>${p.country}${p.city? ' · '+p.city:''}<br>${p.title}`);
+     .bindPopup(`<b>${esc(p.ip)}</b><br>${esc(p.country)}${p.city? ' · '+esc(p.city):''}<br>${esc(p.title)}`);
   });
 }
 </script>
 </body>
-</html>""")
+</html>""", autoescape=True)
 
 
 def _window(a: Alert) -> str:
@@ -280,7 +290,7 @@ def render_report(alerts: list[Alert], events: list[Event]) -> str:
     for a in alerts:
         d = a.to_dict()
         d["window"] = _window(a)
-        d["evidence_html"] = html.escape("\n".join(a.evidence))
+        d["evidence_text"] = "\n".join(a.evidence)
         view.append(d)
 
     sev_chart = {s: sev_counts.get(s, 0) for s in ["critical", "high", "medium", "low"]}
@@ -310,11 +320,11 @@ def render_report(alerts: list[Alert], events: list[Event]) -> str:
         sev_counts=sev_counts,
         top_ips=top_ips,
         matrix=matrix,
-        sev_chart_json=json.dumps(sev_chart),
+        sev_chart_json=_js(sev_chart),
         map_points=map_points,
-        map_points_json=json.dumps(map_points),
+        map_points_json=_js(map_points),
         cti_hits=cti_hits,
-        timeline_labels_json=json.dumps(timeline_labels),
-        timeline_values_json=json.dumps(timeline_values),
+        timeline_labels_json=_js(timeline_labels),
+        timeline_values_json=_js(timeline_values),
         has_timeline=len(timeline_sorted) > 1,
     )

@@ -64,6 +64,8 @@ class Alert:
     description: str
     tactic: str = "-"            # tactique MITRE ATT&CK (ex "Credential Access")
     evidence: list[str] = field(default_factory=list)  # lignes brutes
+    host: Optional[str] = None   # hôte du premier événement (pivot des corrélations)
+    grouped_in: Optional[str] = None  # règle de corrélation qui regroupe cette alerte
 
     # champs d'enrichissement, remplis après coup
     country: Optional[str] = None

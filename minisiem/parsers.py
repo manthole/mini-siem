@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from .events import Event
+from .evtx import is_evtx, read_evtx_file
 
 # auth.log classique : "Nov  8 13:37:01 web01 sshd[1234]: <message>"
 # L'année n'est pas dans la ligne : on la passe en paramètre (défaut = année courante).
@@ -160,6 +161,16 @@ def _is_sysmon(system: ET.Element) -> bool:
     return any("sysmon" in n.lower() for n in names)
 
 
+def _hex(value: Optional[str]) -> Optional[str]:
+    """« 0x00001410 », « 0X1410 » -> « 0x1410 » : même écriture quel que soit l'outil d'export."""
+    if not value:
+        return None
+    try:
+        return f"0x{int(value.strip(), 16):x}"
+    except ValueError:
+        return value.strip().lower()
+
+
 def _bare_user(user: Optional[str]) -> Optional[str]:
     """« PC-COMPTA01\\mmartin » -> « mmartin », pour pivoter avec les autres sources."""
     return user.split("\\")[-1] if user else None
@@ -185,7 +196,7 @@ def _sysmon_event(eid: int, ts: datetime, host: str, data: dict, raw: str) -> Ev
     elif eid == 10:
         ev.process = data.get("SourceImage")
         ev.target = data.get("TargetImage")
-        ev.granted_access = (data.get("GrantedAccess") or "").lower() or None
+        ev.granted_access = _hex(data.get("GrantedAccess"))
     elif eid == 11:
         ev.process = data.get("Image")
         ev.target = data.get("TargetFilename")
@@ -281,9 +292,18 @@ def parse_line(line: str, year: Optional[int] = None) -> Optional[Event]:
 def parse_file(path: str, year: Optional[int] = None) -> Iterator[Event]:
     """Lit un fichier de log et produit les Events reconnus.
 
-    Détecte les journaux Windows (XML, commençant par « < » : journal de
-    sécurité ou Sysmon) et les route vers le parser EVTX ; sinon, auto-détection ligne par ligne (auth/Apache/pare-feu).
+    - .evtx binaire (signature « ElfFile ») : lu directement, sans export préalable ;
+    - XML Windows (commençant par « < » : journal de sécurité ou Sysmon exporté) ;
+    - sinon, auto-détection ligne par ligne (auth/Apache/pare-feu).
     """
+    with open(path, "rb") as fb:
+        magic = fb.read(8)
+    if is_evtx(magic):
+        for xml in read_evtx_file(path):
+            ev = parse_evtx_xml(xml)
+            if ev is not None:
+                yield ev
+        return
     with open(path, encoding="utf-8", errors="replace") as fh:
         head = fh.read(256).lstrip()
     if head.startswith("<"):

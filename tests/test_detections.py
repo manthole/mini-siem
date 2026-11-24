@@ -7,7 +7,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from minisiem.events import Event
+import pytest
+
+from minisiem.events import Alert, Event
 from minisiem.parsers import (parse_auth_line, parse_apache_line, parse_ufw_line,
                               parse_line, parse_evtx_xml)
 from minisiem.rules import load_rules, run_rules
@@ -497,3 +499,98 @@ def test_endswith_and_filter_operators():
     kept = _proc(r"C:\bad.exe", "x")
     dropped = _proc(r"C:\ok.exe", "x")
     assert [a.count for a in run_rules([rule], [kept, dropped])] == [1]
+
+
+# --- V7 : corrélation entre règles (incident « chaîne d'infection ») ------
+
+def _sysmon_alert(rule_id, minute, host="PC01"):
+    t = datetime(2026, 11, 8, 14, 0) + timedelta(minutes=minute)
+    return Alert(rule_id=rule_id, title=rule_id, severity="high", attack="T0000",
+                 source_ip=None, user="mmartin", first_seen=t, last_seen=t, count=1,
+                 description="", host=host)
+
+
+CHAIN = next(r for r in RULES if r["id"] == "SYSMON_INFECTION_CHAIN")
+
+
+def _chain(alerts):
+    from minisiem.rules import _run_correlation
+    return _run_correlation(CHAIN, alerts)
+
+
+def test_chain_groups_three_distinct_detections_on_one_host():
+    members = [_sysmon_alert("SYSMON_OFFICE_SHELL", 0), _sysmon_alert("SYSMON_PS_ENCODED", 1),
+               _sysmon_alert("SYSMON_RUN_KEY", 4)]
+    (inc,) = _chain(members)
+    assert inc.severity == "critical" and inc.count == 3 and inc.host == "PC01"
+    assert all(a.grouped_in == "SYSMON_INFECTION_CHAIN" for a in members)
+    assert "SYSMON_PS_ENCODED" in inc.evidence[1]          # chronologie de l'incident
+
+
+def test_chain_needs_three_different_rules():
+    # deux règles seulement, même répétées : pas d'incident
+    alerts = [_sysmon_alert("SYSMON_LOLBIN_NETWORK", m) for m in range(5)]
+    alerts.append(_sysmon_alert("SYSMON_RUN_KEY", 6))
+    assert _chain(alerts) == []
+    assert all(a.grouped_in is None for a in alerts)
+
+
+def test_chain_respects_window_and_host():
+    spread = [_sysmon_alert("SYSMON_OFFICE_SHELL", 0), _sysmon_alert("SYSMON_PS_ENCODED", 10),
+              _sysmon_alert("SYSMON_RUN_KEY", 30)]                 # 30 min > 15 min
+    assert _chain(spread) == []
+    split = [_sysmon_alert("SYSMON_OFFICE_SHELL", 0, "PC01"),
+             _sysmon_alert("SYSMON_PS_ENCODED", 1, "PC02"),
+             _sysmon_alert("SYSMON_RUN_KEY", 2, "PC03")]           # trois postes différents
+    assert _chain(split) == []
+
+
+def test_chain_on_sysmon_sample_replaces_six_alerts_by_one_incident():
+    from minisiem.parsers import parse_file
+    events = list(parse_file(str(Path(__file__).resolve().parent.parent
+                                 / "samples" / "sysmon_events.xml")))
+    alerts = run_rules(RULES, events)
+    (inc,) = [a for a in alerts if a.rule_id == "SYSMON_INFECTION_CHAIN"]
+    grouped = [a for a in alerts if a.grouped_in == "SYSMON_INFECTION_CHAIN"]
+    assert inc.count == len(grouped) == 6
+    assert inc.host == "PC-COMPTA01.corp.local" and inc.user == "mmartin"
+    normal = [e for e in events if e.timestamp.hour < 14]
+    assert run_rules(RULES, normal) == []
+
+
+def test_correlation_with_unknown_rule_is_refused(tmp_path):
+    (tmp_path / "a.yml").write_text(
+        "id: A\ntitle: a\ntype: correlation\nrules: [INEXISTANTE]\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_rules(str(tmp_path))
+
+
+def test_sigma_export_chain_is_temporal_with_threshold():
+    import yaml as _yaml
+    (doc,) = _yaml.safe_load_all(rule_to_sigma(CHAIN, RULES))
+    c = doc["correlation"]
+    assert c["type"] == "temporal" and c["condition"] == {"gte": 3}
+    assert c["group-by"] == ["Computer"] and c["timespan"] == "15m"
+    assert "sysmon_lsass_access" in c["rules"]
+
+
+def test_report_escapes_values_from_logs():
+    from minisiem.report import render_report
+    evil_user = '"><img src=x onerror=alert(1)>'
+    evil_ip = "</script><script>alert(2)</script>"
+    ev = _ssh(datetime(2026, 11, 8, 10, 0), "failure", evil_ip, evil_user)
+    alert = Alert(rule_id="T", title="t", severity="high", attack="T1110", source_ip=evil_ip,
+                  user=evil_user, first_seen=ev.timestamp, last_seen=ev.timestamp, count=1,
+                  description="", evidence=[ev.raw], lat=1.0, lon=2.0, country="X")
+    out = render_report([alert], [ev])
+    assert "<img src=x" not in out and "<script>alert(2)" not in out
+    assert "&lt;img src=x" in out
+
+
+def test_comsvcs_minidump_triggers_on_both_syntaxes():
+    rundll = r"C:\Windows\System32\rundll32.exe"
+    for cmd in (r"rundll32 C:\windows\system32\comsvcs.dll, MiniDump 624 C:\t\l.dmp full",
+                r"rundll32.exe comsvcs.dll #24 624 C:\t\l.dmp full"):
+        assert "SYSMON_COMSVCS_MINIDUMP" in _ids(run_rules(RULES, [_proc(rundll, cmd)])), cmd
+    ok = _proc(rundll, r"rundll32.exe shell32.dll,Control_RunDLL desk.cpl")
+    assert run_rules(RULES, [ok]) == []

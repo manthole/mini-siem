@@ -1,0 +1,19 @@
+id: SYSMON_COMSVCS_MINIDUMP
+title: Vidage mémoire par comsvcs.dll (MiniDump)
+type: match
+level: critical
+attack: T1003.001
+tactic: Credential Access
+description: >
+  rundll32 appelle la fonction MiniDump de comsvcs.dll (Sysmon 1), une DLL
+  signée de Windows qui écrit la mémoire d'un processus sur le disque.
+  C'est l'une des façons les plus répandues de vider LSASS sans apporter
+  d'outil : on récupère ensuite les secrets hors ligne. Repérée en testant
+  le mini-SIEM sur les enregistrements d'attaques publics EVTX-ATTACK-SAMPLES.
+selection:
+  event_type: process_creation
+  command_line:
+    regex: 'comsvcs(?:\.dll)?["'']?[\s,]+(?:#\s*24|minidump)'
+group_by:
+  - host
+  - user

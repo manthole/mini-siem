@@ -12,7 +12,9 @@ Conversion fidèle, vérifiée en intégration continue par le validateur offici
   - sequence      -> règles de base + corrélations : event_count sur la condition
                      préalable, puis temporal_ordered avec le déclencheur ;
   - baseline_hour -> la règle de base seule : une baseline par compte ne
-                     s'exprime pas en Sigma, le SIEM cible doit la calculer.
+                     s'exprime pas en Sigma, le SIEM cible doit la calculer ;
+  - correlation   -> une corrélation Sigma temporal (« au moins N des règles
+                     citées dans la fenêtre, pour la même entité »).
 Les identifiants Sigma sont des UUID stables dérivés de l'id interne (uuid5),
 et les champs normalisés du mini-SIEM sont renommés selon la taxonomie Sigma
 de chaque source (Image, CommandLine, EventID, cs-uri-query…).
@@ -174,8 +176,9 @@ def _group_by(rule: dict, key: str, default: list[str]) -> list[str]:
     return [fields.get(g, g) for g in rule.get("group_by", default)]
 
 
-def rule_to_sigma_docs(rule: dict) -> list[dict]:
-    """Convertit une règle interne en documents Sigma (règles + corrélations)."""
+def rule_to_sigma_docs(rule: dict, all_rules: list[dict] | None = None) -> list[dict]:
+    """Convertit une règle interne en documents Sigma (règles + corrélations).
+    all_rules sert aux corrélations entre règles : noms des champs de regroupement."""
     kind = rule.get("type", "match")
     level = _LEVEL.get(rule.get("level", "medium"), "medium")
     title = rule["title"]
@@ -228,10 +231,23 @@ def rule_to_sigma_docs(rule: dict) -> list[dict]:
         doc["falsepositives"] = ["toute connexion, tant que la baseline n'est pas appliquée"]
         return [doc]
 
+    if kind == "correlation":
+        # Les règles citées sont exportées chacune dans leur fichier ; on les désigne par
+        # le nom de leur document principal. Champs de regroupement : ceux de la source
+        # de la première règle citée (Computer pour l'hôte Windows, par exemple).
+        by_id = {r["id"]: r for r in (all_rules or [])}
+        first = by_id.get(rule["rules"][0], {})
+        _, fields, _ = _source(first.get("selection") or first.get("precondition") or {})
+        corr = {"type": "temporal", "rules": [r.lower() for r in rule["rules"]],
+                "group-by": [fields.get(g, g) for g in rule.get("group_by", ["host"])],
+                "timespan": _timespan(rule.get("window_seconds", 900)),
+                "condition": {"gte": rule.get("min_rules", 2)}}
+        return [_correlation(rule, "main", title, corr, level)]
+
     raise ValueError(f"type de règle sans équivalent Sigma : {kind!r}")
 
 
-def rule_to_sigma(rule: dict) -> str:
+def rule_to_sigma(rule: dict, all_rules: list[dict] | None = None) -> str:
     """Règle interne -> YAML Sigma (plusieurs documents si corrélation)."""
-    return yaml.safe_dump_all(rule_to_sigma_docs(rule), allow_unicode=True,
+    return yaml.safe_dump_all(rule_to_sigma_docs(rule, all_rules), allow_unicode=True,
                               sort_keys=False, width=100)

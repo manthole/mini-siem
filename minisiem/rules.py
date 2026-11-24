@@ -1,10 +1,13 @@
 """Moteur de détection piloté par des règles YAML (format proche de Sigma).
 
-Quatre types de règles :
+Cinq types de règles :
   - match         : un seul événement suffit (ex : échec sudo "NOT in sudoers")
   - threshold     : N événements d'une même clé dans une fenêtre de temps
   - sequence      : des événements A suivis d'un événement B, même clé
   - baseline_hour : connexion à une heure inhabituelle pour le compte
+  - correlation   : plusieurs règles différentes déclenchées sur une même entité
+                    (un poste, par défaut) dans une fenêtre de temps. Elle travaille
+                    sur les alertes des autres règles, pas sur les événements.
 Une règle peut porter un `filter` : les événements qui y correspondent sont
 écartés (équivalent de « selection and not filter » en Sigma).
 Ajouter une détection = ajouter un fichier .yml, sans toucher au code.
@@ -71,6 +74,12 @@ def load_rules(rules_dir: str) -> list[dict[str, Any]]:
             rule = yaml.safe_load(fh)
         rule["_file"] = path.name
         rules.append(rule)
+    known = {r["id"] for r in rules}
+    for r in rules:
+        if r.get("type") == "correlation":
+            missing = [x for x in r.get("rules", []) if x not in known]
+            if missing or not r.get("rules"):
+                raise ValueError(f"{r['_file']} : règles corrélées inconnues ou absentes : {missing}")
     return rules
 
 
@@ -111,6 +120,7 @@ def _alert_from(rule: dict, events: list[Event]) -> Alert:
         description=rule.get("description", ""),
         tactic=rule.get("tactic", "-"),
         evidence=[e.raw for e in events[:8]],  # 8 preuves max par alerte
+        host=first.host if first.host not in (None, "-") else None,
     )
 
 
@@ -211,12 +221,74 @@ _RUNNERS = {
 }
 
 
+def _chain_alert(rule: dict, members: list[Alert]) -> Alert:
+    for a in members:
+        a.grouped_in = rule["id"]
+    return Alert(
+        rule_id=rule["id"],
+        title=rule["title"],
+        severity=rule.get("level", "high"),
+        attack=rule.get("attack", "-"),
+        source_ip=next((a.source_ip for a in members if a.source_ip), None),
+        user=next((a.user for a in members if a.user), None),
+        first_seen=min(a.first_seen for a in members),
+        last_seen=max(a.last_seen for a in members),
+        count=len(members),
+        description=rule.get("description", ""),
+        tactic=rule.get("tactic", "-"),
+        # la preuve d'un incident : la chronologie des détections qui le composent
+        evidence=[f"{a.first_seen:%Y-%m-%d %H:%M:%S} [{a.severity}] {a.rule_id} — "
+                  f"{a.title} ({a.attack})" for a in members],
+        host=members[0].host,
+    )
+
+
+def _run_correlation(rule: dict, alerts: list[Alert]) -> list[Alert]:
+    """Au moins `min_rules` règles différentes parmi `rules`, sur une même entité
+    (`group_by`, l'hôte par défaut), en moins de `window_seconds`. Une seule alerte par
+    incident ; les alertes qu'il regroupe sont marquées (grouped_in), pour que l'analyste
+    traite un incident au lieu de six alertes séparées."""
+    wanted = set(rule.get("rules", []))
+    group_by = rule.get("group_by", ["host"])
+    window = timedelta(seconds=rule.get("window_seconds", 900))
+    need = rule.get("min_rules", 2)
+    buckets: dict[tuple, list[Alert]] = {}
+    for a in alerts:
+        if a.rule_id in wanted and a.grouped_in is None:
+            k = tuple(getattr(a, f, None) for f in group_by)
+            if all(v is not None for v in k):
+                buckets.setdefault(k, []).append(a)
+    out: list[Alert] = []
+    for group in buckets.values():
+        group.sort(key=lambda a: (a.first_seen, a.rule_id))
+        i = 0
+        while i < len(group):
+            j = i
+            while j + 1 < len(group) and group[j + 1].first_seen - group[i].first_seen <= window:
+                j += 1
+            members = group[i:j + 1]
+            if len({a.rule_id for a in members}) >= need:
+                out.append(_chain_alert(rule, members))
+                i = j + 1
+            else:
+                i += 1
+    return out
+
+
 def run_rules(rules: list[dict], events: list[Event]) -> list[Alert]:
+    """Règles sur les événements d'abord, puis corrélations sur les alertes obtenues."""
     alerts: list[Alert] = []
+    correlations = []
     for rule in rules:
-        runner = _RUNNERS.get(rule.get("type", "match"))
+        kind = rule.get("type", "match")
+        if kind == "correlation":
+            correlations.append(rule)
+            continue
+        runner = _RUNNERS.get(kind)
         if runner is None:
             raise ValueError(f"type de règle inconnu : {rule.get('type')!r} "
                              f"({rule.get('_file')})")
         alerts.extend(runner(rule, events))
+    for rule in correlations:
+        alerts.extend(_run_correlation(rule, alerts))
     return alerts

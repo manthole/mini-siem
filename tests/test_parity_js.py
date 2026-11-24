@@ -23,6 +23,7 @@ NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="Node.js absent")
 
 SAMPLES = ["auth.log", "access.log", "ufw.log", "windows_events.xml", "sysmon_events.xml"]
+BINARY = ["windows_events.evtx", "sysmon_events.evtx"]   # .evtx lus par le lecteur JS
 
 _JS = r"""
 const fs = require("fs"), path = require("path");
@@ -37,10 +38,19 @@ function run(text) {
   return {events: events.length,
           alerts: alerts.map(a => [a.rule_id, a.count, a.source_ip || "", a.user || ""]).sort()};
 }
+function runEvents(events) {
+  let alerts = S.runRules(RULES, events);
+  alerts = alerts.concat(S.ctiDetectContacts(cti, events, alerts));
+  return {events: events.length,
+          alerts: alerts.map(a => [a.rule_id, a.count, a.source_ip || "", a.user || ""]).sort()};
+}
 const files = process.argv.slice(2);
-const texts = files.map(f => fs.readFileSync(path.join(root, "samples", f), "utf8"));
+const read = f => fs.readFileSync(path.join(root, "samples", f));
+const texts = files.filter(f => !f.endsWith(".evtx")).map(f => read(f).toString("utf8"));
 const out = {geo: S.GEO, all: run(texts.join("\n"))};
-files.forEach((f, i) => { out[f] = run(texts[i]); });
+files.forEach(f => {
+  out[f] = f.endsWith(".evtx") ? runEvents(S.parseEvtx(new Uint8Array(read(f)))) : run(read(f).toString("utf8"));
+});
 console.log(JSON.stringify(out));
 """
 
@@ -58,12 +68,12 @@ def _python(paths):
 @pytest.fixture(scope="module")
 def js():
     env = dict(os.environ, TZ="UTC")
-    out = subprocess.run([NODE, "-e", _JS, str(ROOT), *SAMPLES], env=env,
+    out = subprocess.run([NODE, "-e", _JS, str(ROOT), *SAMPLES, *BINARY], env=env,
                          capture_output=True, text=True, check=True).stdout
     return json.loads(out)
 
 
-@pytest.mark.parametrize("sample", SAMPLES)
+@pytest.mark.parametrize("sample", SAMPLES + BINARY)
 def test_same_alerts_per_source(js, sample):
     assert js[sample] == _python([sample])
 

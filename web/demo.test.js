@@ -118,6 +118,32 @@ ok("échantillon Sysmon : 6 règles + CTI", (() => {
   return ["SYSMON_OFFICE_SHELL", "SYSMON_PS_ENCODED", "SYSMON_LOLBIN_DOWNLOAD", "SYSMON_LOLBIN_NETWORK",
           "SYSMON_RUN_KEY", "SYSMON_LSASS_ACCESS", "THREAT_INTEL_HIT"].every(r => got.has(r));
 })());
+ok("incident « chaîne d'infection » : 6 détections regroupées", (() => {
+  const ev = S.parseText(globalThis.MINISIEM_SAMPLES.sysmon, 2026);
+  const al = S.runRules(RULES, ev);
+  const inc = al.filter(a => a.rule_id === "SYSMON_INFECTION_CHAIN");
+  const grouped = al.filter(a => a.grouped_in === "SYSMON_INFECTION_CHAIN");
+  return inc.length === 1 && inc[0].count === 6 && grouped.length === 6 && inc[0].severity === "critical";
+})());
+ok("pas d'incident avec deux règles seulement", (() => {
+  const ev = S.parseText(globalThis.MINISIEM_SAMPLES.sysmon, 2026);
+  const only = RULES.filter(r => r.id !== "SYSMON_OFFICE_SHELL" && r.id !== "SYSMON_PS_ENCODED" &&
+                                 r.id !== "SYSMON_LOLBIN_DOWNLOAD" && r.id !== "SYSMON_RUN_KEY");
+  return !S.runRules(only, ev).some(a => a.rule_id === "SYSMON_INFECTION_CHAIN");
+})());
+ok("fichier .evtx binaire : mêmes événements que l'export XML", (() => {
+  const fs = require("fs"), path = require("path");
+  const bin = new Uint8Array(fs.readFileSync(path.join(__dirname, "..", "samples", "sysmon_events.evtx")));
+  const a = S.parseEvtx(bin), b = S.parseText(globalThis.MINISIEM_SAMPLES.sysmon, 2026);
+  const k = e => [e.event_id, e.user, e.process, e.command_line, e.target, e.granted_access, +e.timestamp].join("|");
+  return S.isEvtx(bin) && a.length === 40 && a.map(k).join("\n") === b.map(k).join("\n");
+})());
+ok("exemple .evtx embarqué dans la console", (() => {
+  const bin = Uint8Array.from(atob(globalThis.MINISIEM_SAMPLES.sysmon_evtx), c => c.charCodeAt(0));
+  const al = S.runRules(RULES, S.parseEvtx(bin));
+  return al.some(a => a.rule_id === "SYSMON_INFECTION_CHAIN" && a.count === 6);
+})());
+ok("un fichier texte n'est pas pris pour un .evtx", !S.isEvtx(new TextEncoder().encode("Nov  8 10:00:01 web01 sshd")));
 ok("texte et XML mélangés", (() => {
   const s = globalThis.MINISIEM_SAMPLES;
   const n = S.parseText([s.auth, s.win].join("\n"), 2026);

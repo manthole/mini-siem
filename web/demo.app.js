@@ -15,8 +15,17 @@
   const num = n => (isFinite(Number(n)) ? Number(n) : 0);
   const $ = id => document.getElementById(id);
 
-  function analyze(text) {
-    const events = M.parseText(text, 2026);
+  function analyze(text) { analyzeEvents(M.parseText(text, 2026)); }
+  function analyzeBytes(bytes) {
+    if (M.isEvtx(bytes)) analyzeEvents(M.parseEvtx(bytes));
+    else analyze(new TextDecoder("utf-8").decode(bytes));
+  }
+  function fromBase64(b64) {
+    const bin = atob(b64), out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function analyzeEvents(events) {
     let alerts = M.runRules(RULES, events);
     alerts = alerts.concat(M.ctiDetectContacts(CTI, events, alerts));
     M.ctiEnrich(alerts, CTI);
@@ -46,7 +55,7 @@
     $("rows").innerHTML = alerts.map(a => `
       <tr>
         <td><span class="sev ${sev(a.severity)}">${sev(a.severity)}</span></td>
-        <td>${esc(a.title)}${a.threat ? `<br><span class="cti">⚠ connu — ${esc(a.threat.source)} (${esc(a.threat.category)}, ${num(a.threat.confidence)}%)</span>` : ""}
+        <td>${esc(a.title)}${a.threat ? `<br><span class="cti">⚠ connu — ${esc(a.threat.source)} (${esc(a.threat.category)}, ${num(a.threat.confidence)}%)</span>` : ""}${a.grouped_in ? `<br><span class="geo">↳ dans l'incident ${esc(a.grouped_in)}</span>` : ""}
           <details><summary>${num(a.count)} preuve(s)</summary>
           <pre>${esc((a.evidence || []).join("\n"))}</pre></details></td>
         <td>${a.source_ip ? `<code>${esc(a.source_ip)}</code>` : "-"}${a.country ? `<br><span class="geo">${esc(a.country)}${a.city ? " · " + esc(a.city) : ""}</span>` : ""}</td>
@@ -57,12 +66,18 @@
     $("results").scrollIntoView({behavior: "smooth", block: "start"});
   }
 
-  function readFile(f) { const r = new FileReader(); r.onload = () => analyze(String(r.result)); r.readAsText(f); }
+  function readFile(f) {
+    const r = new FileReader();
+    r.onload = () => { try { analyzeBytes(new Uint8Array(r.result)); } catch (e) { window.alert("Fichier illisible : " + e.message); } };
+    r.readAsArrayBuffer(f);
+  }
 
   document.addEventListener("click", e => {
     const t = e.target.closest("[data-action]");
     if (!t) return;
     if (t.dataset.action === "pick-file") $("file").click();
+    else if (t.dataset.action === "sample" && t.dataset.sample === "sysmon_evtx")
+      analyzeBytes(fromBase64(window.MINISIEM_SAMPLES.sysmon_evtx));
     else if (t.dataset.action === "sample" && window.MINISIEM_SAMPLES[t.dataset.sample])
       analyze(window.MINISIEM_SAMPLES[t.dataset.sample]);
   });

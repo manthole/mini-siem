@@ -3,10 +3,11 @@
 [![tests](https://github.com/manthole/mini-siem/actions/workflows/tests.yml/badge.svg)](https://github.com/manthole/mini-siem/actions/workflows/tests.yml)
 
 Analyseur de logs défensif en ligne de commande. Il ingère des logs (SSH, web,
-pare-feu, journal de sécurité Windows, Sysmon), applique
-des règles de détection (format proche de [Sigma](https://github.com/SigmaHQ/sigma))
-et produit un rapport HTML autonome avec les alertes, leurs preuves et la
-technique [MITRE ATT&CK](https://attack.mitre.org/) associée.
+pare-feu, journal de sécurité Windows, Sysmon), y compris les fichiers `.evtx`
+de Windows **lus directement**, applique des règles de détection (format proche
+de [Sigma](https://github.com/SigmaHQ/sigma)), **corrèle** les détections d'un
+même poste en incidents, et produit un rapport HTML autonome avec les alertes,
+leurs preuves et la technique [MITRE ATT&CK](https://attack.mitre.org/) associée.
 
 C'est un projet d'apprentissage : une version miniature de ce que font Splunk,
 Elastic ou Wazuh, pensée pour montrer la logique de détection SOC brique par
@@ -17,52 +18,55 @@ brique.
 ```bash
 python generate_logs.py --outdir samples                 # jeu de données synthétique
 python analyze.py samples/auth.log samples/access.log samples/ufw.log \
-                  samples/windows_events.xml samples/sysmon_events.xml --out rapport.html
+                  samples/windows_events.evtx samples/sysmon_events.evtx --out rapport.html
 ```
 
 Ouvre ensuite `rapport.html` dans un navigateur : KPIs par sévérité, graphique,
 carte des IP sources, matrice MITRE ATT&CK et tableau des alertes avec preuves.
 
 ```
-[+] 273 événements analysés, 20 règles chargées.
+[+] 273 événements analysés, 22 règles chargées.
 [+] GeoIP : mode demo.
 [+] CTI : flux « CTI démo », 7 indicateurs, 10 alerte(s) enrichie(s).
-[+] 20 alerte(s) :
-    - [CRITICAL] Brute force SSH réussi               ip=198.51.100.23  x9   T1110
-    - [CRITICAL] Brute force Windows réussi           ip=198.51.100.23  x7   T1110
-    - [CRITICAL] Accès mémoire suspect à LSASS        user=mmartin      x1   T1003.001
-    - [CRITICAL] Contact avec une IP C2 connue        ip=203.0.113.200  x9   T1071
-    - [HIGH    ] Brute force SSH                      ip=203.0.113.66   x10  T1110.001
-    - [HIGH    ] Outil d'attaque web (user-agent)     ip=203.0.113.9    x31  T1595.002
-    - [HIGH    ] Injection web (SQLi/XSS/traversée)   ip=203.0.113.9    x1   T1190
-    - [HIGH    ] Brute force Windows (RDP/SMB)        ip=203.0.113.66   x10  T1110.001
-    - [HIGH    ] Journal de sécurité effacé           user=administr.   x1   T1685.005
-    - [HIGH    ] Ajout à un groupe privilégié         user=svc_backup   x1   T1098
-    - [HIGH    ] Office lance un interpréteur         user=mmartin      x1   T1204.002
-    - [HIGH    ] PowerShell avec commande encodée     user=mmartin      x1   T1059.001
-    - [HIGH    ] Téléchargement par certutil          user=mmartin      x1   T1105
-    - [HIGH    ] Connexion réseau de rundll32         user=mmartin      x5   T1218
-    - [MEDIUM  ] Escalade de privilèges via sudo      user=www-data     x1   T1548.003
-    - [MEDIUM  ] Scan web (énumération)               ip=203.0.113.9    x20  T1595.003
-    - [MEDIUM  ] Scan de ports                        ip=198.51.100.77  x20  T1046
-    - [MEDIUM  ] Connexion à une heure inhabituelle   user=jdupont      x1   T1078
-    - [MEDIUM  ] Création de compte utilisateur       user=svc_backup   x1   T1136.001
-    - [MEDIUM  ] Persistance par clé de registre Run  user=mmartin      x1   T1547.001
+[+] 21 alerte(s) :
+    - [CRITICAL] Brute force SSH réussi                ip=198.51.100.23  x9   T1110
+    - [CRITICAL] Brute force Windows réussi            ip=198.51.100.23  x7   T1110
+    - [CRITICAL] Accès mémoire suspect à LSASS         user=mmartin      x1   T1003.001  ↳ incident
+    - [CRITICAL] INCIDENT : chaîne d'infection         user=mmartin      x6   T1204.002
+    - [CRITICAL] Contact avec une IP C2 connue         ip=203.0.113.200  x9   T1071
+    - [HIGH    ] Brute force SSH                       ip=203.0.113.66   x10  T1110.001
+    - [HIGH    ] Outil d'attaque web (user-agent)      ip=203.0.113.9    x31  T1595.002
+    - [HIGH    ] Injection web (SQLi/XSS/traversée)    ip=203.0.113.9    x1   T1190
+    - [HIGH    ] Brute force Windows (RDP/SMB)         ip=203.0.113.66   x10  T1110.001
+    - [HIGH    ] Journal de sécurité effacé            user=administra.  x1   T1685.005
+    - [HIGH    ] Ajout à un groupe privilégié          user=svc_backup   x1   T1098
+    - [HIGH    ] Office lance un interpréteur          user=mmartin      x1   T1204.002  ↳ incident
+    - [HIGH    ] PowerShell avec commande encodée      user=mmartin      x1   T1059.001  ↳ incident
+    - [HIGH    ] Téléchargement par certutil           user=mmartin      x1   T1105      ↳ incident
+    - [HIGH    ] Connexion réseau de rundll32          user=mmartin      x5   T1218      ↳ incident
+    - [MEDIUM  ] Escalade de privilèges via sudo       user=www-data     x1   T1548.003
+    - [MEDIUM  ] Scan web (énumération)                ip=203.0.113.9    x20  T1595.003
+    - [MEDIUM  ] Scan de ports                         ip=198.51.100.77  x20  T1046
+    - [MEDIUM  ] Connexion à une heure inhabituelle    ip=203.0.113.66   x1   T1078
+    - [MEDIUM  ] Création de compte utilisateur        user=svc_backup   x1   T1136.001
+    - [MEDIUM  ] Persistance par clé de registre Run   user=mmartin      x1   T1547.001  ↳ incident
 ```
 
 ## Architecture
 
 ```
-auth.log      ┐
-access.log    │
-ufw.log       ├▶ parsers.py ─▶ Event normalisé ─▶ rules.py ─▶ Alertes ─▶ geo.py + cti.py ─▶ report.py ─▶ rapport.html
-windows.xml   │  (auto-détect)  (schéma type ECS)  (règles YAML)        (GeoIP, CTI)      (Chart.js+Leaflet+ATT&CK)
-sysmon.xml    ┘
+auth.log       ┐
+access.log     │
+ufw.log        ├▶ parsers.py ─▶ Event ─▶ rules.py ─▶ alertes ─▶ corrélation ─▶ geo.py, cti.py ─▶ report.py
+.evtx ou .xml  │  (auto-détect)  (ECS)   (YAML)                 (incidents)    (GeoIP, CTI)      (rapport.html)
+(Sécurité,     │
+ Sysmon)       ┘
 ```
 
 - `minisiem/events.py` — schéma d'événement et d'alerte normalisé (inspiré d'ECS).
-- `minisiem/parsers.py` — ligne brute → `Event`. Sources : auth.log, Apache/Nginx, pare-feu UFW, journal de sécurité Windows et Sysmon (XML).
-- `minisiem/rules.py` — moteur de détection (types `match`, `threshold`, `sequence`, `baseline_hour`, avec filtres d'exclusion).
+- `minisiem/parsers.py` — ligne brute → `Event`. Sources : auth.log, Apache/Nginx, pare-feu UFW, journal de sécurité Windows et Sysmon (XML ou `.evtx`).
+- `minisiem/evtx.py` — lecteur (et écrivain) du format binaire `.evtx` de Windows, sans dépendance.
+- `minisiem/rules.py` — moteur de détection (types `match`, `threshold`, `sequence`, `baseline_hour`, avec filtres d'exclusion) et corrélation entre règles (`correlation`).
 - `minisiem/geo.py` — enrichissement GeoIP branchable (MaxMind, sinon table de démo).
 - `minisiem/cti.py` — renseignement sur les menaces (flux d'indicateurs branchable).
 - `minisiem/config.py` — listes blanches et règles désactivées.
@@ -94,6 +98,8 @@ sysmon.xml    ┘
 | `SYSMON_LSASS_ACCESS` | Sysmon | accès mémoire à LSASS, antivirus écarté (10) | T1003.001 |
 | `SYSMON_RUN_KEY` | Sysmon | écriture sous une clé de registre Run (13) | T1547.001 |
 | `SYSMON_LOLBIN_NETWORK` | Sysmon | connexion réseau de rundll32, regsvr32 ou mshta (3) | T1218 |
+| `SYSMON_COMSVCS_MINIDUMP` | Sysmon | vidage mémoire par `comsvcs.dll, MiniDump` (1) | T1003.001 |
+| `SYSMON_INFECTION_CHAIN` | Corrélation | au moins 3 détections Sysmon différentes sur un même poste en 15 min | T1204.002 |
 
 Les techniques suivent la version actuelle d'ATT&CK : depuis la v19 (avril
 2026), la tactique Defense Evasion est scindée en Stealth et Defense
@@ -103,13 +109,13 @@ obsolète.
 
 ### Écrire une règle
 
-Quatre types de règles, et des opérateurs sur les champs (`contains`,
+Cinq types de règles, et des opérateurs sur les champs (`contains`,
 `endswith`, `regex`, `in`, `gte`, `lte`) :
 
 ```yaml
 id: WEB_ATTACK_TOOL
 title: Outil d'attaque web détecté
-type: match              # match | threshold | sequence | baseline_hour
+type: match              # match | threshold | sequence | baseline_hour | correlation
 level: high              # low | medium | high | critical
 attack: T1595.002
 selection:
@@ -150,15 +156,41 @@ pour que la carte s'affiche quand même. Les IP privées ne sont jamais géoloca
 
 ## Journaux Windows (EVTX)
 
-Le mini-SIEM lit les événements Windows **au format XML**, celui que produisent
-`wevtutil qe` ou `Get-WinEvent`. Un fichier `.evtx` binaire se convertit en ce
-même XML en amont :
+Le mini-SIEM lit **directement les fichiers `.evtx`**, le format binaire natif de
+l'Observateur d'événements, sans outil ni bibliothèque à installer. Il lit aussi
+l'export XML (`wevtutil qe`, `Get-WinEvent`). Pour récupérer une copie du journal
+(le fichier ouvert par Windows est verrouillé) :
+
+```powershell
+wevtutil epl Security C:\temp\security.evtx
+wevtutil epl Microsoft-Windows-Sysmon/Operational C:\temp\sysmon.evtx
+```
 
 ```bash
-pip install python-evtx
-evtx_dump Security.evtx > security.xml      # .evtx binaire -> XML
-python analyze.py security.xml --out rapport.html
+python analyze.py security.evtx sysmon.evtx --out rapport.html
 ```
+
+La console web accepte aussi un `.evtx` glissé dans la page : il est décodé dans
+le navigateur et ne quitte pas l'ordinateur.
+
+`minisiem/evtx.py` décode le format : en-tête, blocs de 64 Ko, XML binaire avec
+ses modèles partagés et ses valeurs typées (FILETIME, SID, GUID, hexadécimal…), et
+le XML binaire imbriqué qu'utilise Sysmon pour `EventData`. Chaque événement est
+rendu en XML texte comme le ferait `Get-WinEvent`, puis lu par le même parser :
+une seule logique de détection pour les deux formats. Un enregistrement abîmé est
+ignoré sans faire échouer la lecture du fichier.
+
+Le lecteur a été vérifié sur de **vrais journaux Windows** : les fichiers de test
+de [python-evtx](https://github.com/williballenthin/python-evtx) et des
+enregistrements d'attaques publics
+([EVTX-ATTACK-SAMPLES](https://github.com/sbousseaden/EVTX-ATTACK-SAMPLES)), soit
+plus de 6 600 enregistrements : tous rendus en XML valide, identiques octet pour
+octet entre les versions Python et JavaScript, et conformes aux valeurs attendues
+par les tests de python-evtx. Sur ces enregistrements d'attaques, les règles
+repèrent le vidage de LSASS et ouvrent un incident « chaîne d'infection » sur les
+tests Atomic Red Team. Ces fichiers tiers ne sont pas redistribués ici : les
+tests du dépôt utilisent des `.evtx` produits par l'écrivain du module, au même
+format que Windows (sommes de contrôle CRC32 comprises).
 
 Event IDs reconnus : 4625 (échec), 4624 (succès), 4672 (privilèges spéciaux),
 4720 (compte créé), 4732 (ajout à un groupe), 1102 (journal effacé).
@@ -207,6 +239,31 @@ téléchargement par certutil → `rundll32` qui contacte son C2 toutes les minu
 qui tentait des connexions SSH dans `auth.log` : la CTI relie les deux sources.
 La charge PowerShell est factice : décodée, elle ne fait que décrire l'étape
 suivante, vers une IP de documentation.
+
+## Corrélation entre règles : des incidents plutôt que des alertes
+
+Une règle `correlation` ne lit pas les événements mais les **alertes des autres
+règles**. `SYSMON_INFECTION_CHAIN` ouvre un incident critique dès que trois
+détections Sysmon différentes touchent le même poste en moins de 15 minutes :
+
+```yaml
+type: correlation
+rules: [SYSMON_OFFICE_SHELL, SYSMON_PS_ENCODED, SYSMON_LOLBIN_DOWNLOAD,
+        SYSMON_LOLBIN_NETWORK, SYSMON_RUN_KEY, SYSMON_LSASS_ACCESS, SYSMON_COMSVCS_MINIDUMP]
+min_rules: 3          # au moins 3 règles différentes…
+window_seconds: 900   # …en 15 minutes…
+group_by: [host]      # …sur le même poste
+```
+
+Prises une à une, ces alertes peuvent être du bruit (un administrateur qui lance
+PowerShell encodé, un installeur qui écrit une clé Run). Ensemble, elles
+dessinent une compromission en cours. C'est ce que font les SIEM du marché
+(incidents de Sentinel, notables de Splunk) pour **réduire le bruit** : sur le
+jeu d'exemple, six alertes deviennent un seul incident, dont la preuve est la
+chronologie des détections. Les alertes regroupées restent consultables : la
+console les replie sous l'incident (option « regrouper par incident ») et la
+fiche de l'incident les liste, cliquables ; le rapport et la ligne de commande
+les marquent `↳ incident`.
 
 ## Matrice MITRE ATT&CK
 
@@ -268,6 +325,8 @@ autre SIEM, via les convertisseurs du projet Sigma. La conversion est fidèle :
   les ports du scan) ;
 - une `sequence` devient une corrélation `event_count` sur la condition
   préalable, enchaînée à une corrélation `temporal_ordered` avec le déclencheur ;
+- une `correlation` devient une corrélation Sigma `temporal` avec un seuil
+  (`condition: gte: 3` : au moins trois des règles citées dans la fenêtre) ;
 - seule la baseline horaire, propre à chaque compte, n'a pas d'équivalent :
   sa règle de base est exportée avec une note.
 
@@ -282,10 +341,12 @@ Le moteur de détection est porté en JavaScript (`web/minisiem.js`), généré 
 partir des mêmes règles YAML. Deux pages, **entièrement côté client** (aucun
 serveur, aucune donnée envoyée) :
 
-- `web/demo.html` — démo simple : déposer un log, voir les alertes. Exemples
-  intégrés pour les cinq sources (SSH, web, pare-feu, Windows, Sysmon).
+- `web/demo.html` — démo simple : déposer un log (texte, XML ou `.evtx`), voir
+  les alertes. Exemples intégrés pour les cinq sources, et le journal Sysmon au
+  format `.evtx` binaire.
 - `web/console.html` — **console SOC complète**, avec quatre capacités :
-  - **Détection** : KPIs, filtres par sévérité et recherche, tableau d'alertes.
+  - **Détection** : KPIs, filtres par sévérité et recherche, tableau d'alertes,
+    détections repliées sous leur incident corrélé.
   - **Investigation** : clic sur une alerte → pivot sur l'IP/compte, activité
     liée (tous les événements de l'entité), chaîne ATT&CK, géo et contexte CTI.
   - **Réponse à incident** : statut (Nouveau → En cours → Contenu → Résolu /
@@ -314,6 +375,10 @@ user-agent piégé dans un log). Elle est donc durcie comme le site qui l'héber
   empreinte SHA-256, calculée par `build_web_rules.py`, sans `'unsafe-inline'`.
 - Aucune requête réseau (`connect-src` non autorisé) : les journaux ne quittent
   jamais le navigateur.
+- Le **rapport HTML** suit la même règle : gabarit Jinja2 en échappement
+  automatique, et données des graphiques protégées contre une fermeture de
+  `<script>`. Un nom de compte ou une « IP » piégés dans un `auth.log` restent du
+  texte (testé).
 
 ```bash
 python build_web_rules.py        # régénère rules.data.js, samples.js, threat_feed.js et la version autonome
@@ -328,15 +393,16 @@ Règles, logs d'exemple et flux CTI de la démo sont **générés** depuis `rule
 
 ```bash
 pip install -r requirements.txt pytest
-python -m pytest -q          # 57 tests : parsers, règles, CTI, exports, parité Python/JS
-node web/demo.test.js        # 25 tests du moteur JavaScript
+python -m pytest -q          # 77 tests : parsers, .evtx, règles, corrélation, CTI, exports, parité Python/JS
+node web/demo.test.js        # 30 tests du moteur JavaScript
 ```
 
 Chaque règle est testée sur son scénario, et des tests vérifient que le trafic
 normal ne génère **aucune** alerte (contrôle des faux positifs : impression
 depuis Word, script d'administration PowerShell, antivirus qui lit LSASS…).
 Un test de **parité** fait tourner les deux moteurs, Python et JavaScript, sur
-les cinq journaux d'exemple et exige exactement les mêmes alertes.
+les journaux d'exemple (texte, XML et `.evtx`) et exige exactement les mêmes
+alertes.
 
 L'intégration continue (GitHub Actions, actions épinglées par empreinte) lance
 à chaque envoi les tests Python et JavaScript, vérifie que les fichiers générés
@@ -370,11 +436,20 @@ exportées au validateur Sigma officiel.
   installeur légitime écrit aussi des clés Run, d'où la sévérité moyenne de
   `SYSMON_RUN_KEY`, et la liste d'exclusion de `SYSMON_LSASS_ACCESS` est à
   compléter avec les outils de sécurité du parc (EDR, sauvegarde).
+- La corrélation regroupe par poste : des événements sans nom d'hôte n'entrent
+  dans aucun incident, et une attaque étalée sur plus de 15 minutes produit des
+  alertes séparées (ou plusieurs incidents). La fenêtre est un compromis entre
+  bruit et détection des attaques lentes.
+- Le lecteur `.evtx` ignore les enregistrements abîmés sans vérifier les sommes de
+  contrôle (choix de robustesse : un journal partiellement corrompu reste
+  exploitable) ; il ne lit pas les journaux « sales » qu'un arrêt brutal de
+  Windows laisse parfois au-delà de la zone déclarée pleine.
 
 ## Feuille de route
 
 - Mode « live » qui suit les logs en continu (tail) avec notifications.
-- Enrichissement réputation d'IP (AbuseIPDB) et corrélation inter-règles.
+- Enrichissement réputation d'IP (AbuseIPDB) ; corrélation entre postes (un même
+  compte compromis sur plusieurs machines).
 - Davantage de sources : journaux cloud (CloudTrail, Entra ID), et d'autres
   événements Sysmon (WMI, canaux nommés, chargement de pilotes).
 
