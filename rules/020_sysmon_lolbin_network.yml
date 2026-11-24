@@ -3,7 +3,7 @@ title: Connexion réseau d'un binaire système détourné
 type: match
 level: high
 attack: T1218
-tactic: Defense Evasion
+tactic: Stealth
 description: >
   rundll32, regsvr32 ou mshta ouvre une connexion réseau (Sysmon 3). Ces
   binaires servent à exécuter du code sous couvert d'un programme signé ;

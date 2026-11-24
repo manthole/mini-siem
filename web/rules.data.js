@@ -170,8 +170,8 @@
     "title": "Journal de sécurité Windows effacé",
     "type": "match",
     "level": "high",
-    "attack": "T1070.001",
-    "tactic": "Defense Evasion",
+    "attack": "T1685.005",
+    "tactic": "Defense Impairment",
     "description": "Le journal de sécurité a été effacé (Event ID 1102). Technique anti-forensic classique pour masquer une activité malveillante après coup.\n",
     "selection": {
       "event_id": 1102
@@ -392,7 +392,7 @@
     "type": "match",
     "level": "high",
     "attack": "T1218",
-    "tactic": "Defense Evasion",
+    "tactic": "Stealth",
     "description": "rundll32, regsvr32 ou mshta ouvre une connexion réseau (Sysmon 3). Ces binaires servent à exécuter du code sous couvert d'un programme signé ; qu'ils parlent au réseau évoque une charge chargée en mémoire qui contacte son serveur de commande (C2). Des connexions répétées vers la même adresse ressemblent à une balise.\n",
     "selection": {
       "event_type": "network_connection",

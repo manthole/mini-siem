@@ -257,14 +257,18 @@ def render_report(alerts: list[Alert], events: list[Event]) -> str:
     timeline_labels = [b.strftime("%H:%M") for b, _ in timeline_sorted]
     timeline_values = [n for _, n in timeline_sorted]
 
-    # Matrice ATT&CK : tactiques (ordre canonique) -> techniques détectées
-    tactic_order = ["Reconnaissance", "Initial Access", "Execution", "Persistence",
-                    "Privilege Escalation", "Defense Evasion", "Credential Access",
-                    "Discovery", "Lateral Movement", "Collection", "Exfiltration", "Impact"]
+    # Matrice ATT&CK : tactiques (ordre canonique, ATT&CK v19 : Defense Evasion
+    # scindée en Stealth et Defense Impairment) -> techniques détectées
+    tactic_order = ["Reconnaissance", "Resource Development", "Initial Access", "Execution",
+                    "Persistence", "Privilege Escalation", "Stealth", "Defense Impairment",
+                    "Credential Access", "Discovery", "Lateral Movement", "Collection",
+                    "Command and Control", "Exfiltration", "Impact"]
     by_tactic: dict = {}
     for a in alerts:
         tech = by_tactic.setdefault(a.tactic, {})
         tech.setdefault(a.attack, {"title": a.title, "n": 0})["n"] += 1
+    # une tactique hors liste (règle personnalisée) reste affichée, en fin de matrice
+    tactic_order += sorted(t for t in by_tactic if t not in tactic_order)
     matrix = []
     for tactic in tactic_order:
         if tactic in by_tactic:

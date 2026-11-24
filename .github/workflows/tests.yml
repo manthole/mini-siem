@@ -37,4 +37,4 @@ jobs:
       - name: Règles au format Sigma (validateur officiel)
         run: |
           python analyze.py --export-sigma sigma
-          sigma check sigma
+          sigma check --fail-on-issues sigma

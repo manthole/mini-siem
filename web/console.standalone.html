@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Zwz0X6riPnpc4uXXQtLeH6GNSsAlgXP5/FMjkRwBmQA=' 'sha256-5a/iM0+zT15rFFG+bXQHYquLfR6bM7uLo1pxDDj0TJ4=' 'sha256-NnIith1trOR+mCu8uIbkEPJOX/G1LegXHWjzdGRZmKI=' 'sha256-r9hQcjZMdIqUYalKKNW8zq+h2rHnGaXqoctR5Dc+b04=' 'sha256-Nm3F1Kr2ISMGmSFe9qODreUZWzTCln/OQ93jY9XGI88='; style-src 'sha256-tl6k2e8dOpNOFXeTUYTrTb25b63gF16klVF9ox9VKtg='; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Zwz0X6riPnpc4uXXQtLeH6GNSsAlgXP5/FMjkRwBmQA=' 'sha256-F0J2WMU5JCM2TUci/GvcUc7n/Rm9ulTZXmiWx/wnjA8=' 'sha256-NnIith1trOR+mCu8uIbkEPJOX/G1LegXHWjzdGRZmKI=' 'sha256-r9hQcjZMdIqUYalKKNW8zq+h2rHnGaXqoctR5Dc+b04=' 'sha256-Nm3F1Kr2ISMGmSFe9qODreUZWzTCln/OQ93jY9XGI88='; style-src 'sha256-tl6k2e8dOpNOFXeTUYTrTb25b63gF16klVF9ox9VKtg='; img-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>mini-SIEM — console SOC</title>
 <style>
@@ -735,8 +735,8 @@ body.redirect { min-height:100vh; display:flex; align-items:center; justify-cont
     "title": "Journal de sécurité Windows effacé",
     "type": "match",
     "level": "high",
-    "attack": "T1070.001",
-    "tactic": "Defense Evasion",
+    "attack": "T1685.005",
+    "tactic": "Defense Impairment",
     "description": "Le journal de sécurité a été effacé (Event ID 1102). Technique anti-forensic classique pour masquer une activité malveillante après coup.\n",
     "selection": {
       "event_id": 1102
@@ -957,7 +957,7 @@ body.redirect { min-height:100vh; display:flex; align-items:center; justify-cont
     "type": "match",
     "level": "high",
     "attack": "T1218",
-    "tactic": "Defense Evasion",
+    "tactic": "Stealth",
     "description": "rundll32, regsvr32 ou mshta ouvre une connexion réseau (Sysmon 3). Ces binaires servent à exécuter du code sous couvert d'un programme signé ; qu'ils parlent au réseau évoque une charge chargée en mémoire qui contacte son serveur de commande (C2). Des connexions répétées vers la même adresse ressemblent à une balise.\n",
     "selection": {
       "event_type": "network_connection",
