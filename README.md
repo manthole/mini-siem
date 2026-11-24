@@ -95,10 +95,11 @@ sysmon.xml    ┘
 | `SYSMON_RUN_KEY` | Sysmon | écriture sous une clé de registre Run (13) | T1547.001 |
 | `SYSMON_LOLBIN_NETWORK` | Sysmon | connexion réseau de rundll32, regsvr32 ou mshta (3) | T1218 |
 
-Les techniques suivent ATT&CK v19 (avril 2026) : la tactique Defense Evasion y
-est scindée en Stealth et Defense Impairment, et l'effacement des journaux
-Windows est devenu T1685.005. Le validateur Sigma de l'intégration continue
-signale toute référence devenue obsolète.
+Les techniques suivent la version actuelle d'ATT&CK : depuis la v19 (avril
+2026), la tactique Defense Evasion est scindée en Stealth et Defense
+Impairment, et l'effacement des journaux Windows est devenu T1685.005. Le
+validateur Sigma de l'intégration continue signale toute référence devenue
+obsolète.
 
 ### Écrire une règle
 
