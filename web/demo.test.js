@@ -75,6 +75,55 @@ ok("unusual hour", (() => {
   return a.length===1 && a[0].count===1;
 })());
 
+// Sysmon
+const SYSMON = (eid, data) => '<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">' +
+  '<System><Provider Name="Microsoft-Windows-Sysmon" Guid="{5770385f-c22a-43e0-bf4c-06f5698ffbd9}"/>' +
+  `<EventID>${eid}</EventID><TimeCreated SystemTime="2026-11-08T14:05:31.1234567Z"/>` +
+  '<Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC01</Computer></System><EventData>' +
+  Object.entries(data).map(([k, v]) => `<Data Name="${k}">${v}</Data>`).join("") + '</EventData></Event>';
+const WORD = "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE";
+const PS = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+ok("parse sysmon 1 + entités XML", (() => {
+  const e = S.parseEvtxBlock(SYSMON(1, {Image: PS, ParentImage: WORD, User: "CORP\\mmartin",
+    CommandLine: "powershell.exe -c &quot;Get-Date&quot; &amp;&amp; x"}));
+  return e && e.source === "sysmon" && e.event_type === "process_creation" && e.user === "mmartin" &&
+    e.command_line === 'powershell.exe -c "Get-Date" && x' && e.parent_process === WORD;
+})());
+ok("parse sysmon 10 lsass", (() => {
+  const e = S.parseEvtxBlock(SYSMON(10, {SourceImage: "C:\\x.exe", TargetImage: "C:\\Windows\\system32\\lsass.exe", GrantedAccess: "0x1FFFFF"}));
+  return e && e.event_type === "process_access" && e.granted_access === "0x1fffff" && e.process === "C:\\x.exe";
+})());
+ok("eventid 1 hors Sysmon ignoré", S.parseEvtxBlock(SYSMON(1, {Image: PS}).replace(/Sysmon/g, "Other")) === null);
+function proc(image, cmd, parent) {
+  return {timestamp: new Date(2026, 10, 8, 14, 5), source: "sysmon", event_type: "process_creation",
+          outcome: "info", host: "PC01", user: "mmartin", process: image,
+          parent_process: parent || "C:\\Windows\\explorer.exe", command_line: cmd, raw: "x"};
+}
+ok("office -> powershell", ids(S.runRules(RULES, [proc(PS, "powershell -nop", WORD)])).has("SYSMON_OFFICE_SHELL"));
+ok("office -> impression silencieux", S.runRules(RULES, [proc("C:\\Windows\\splwow64.exe", "splwow64.exe 12288", WORD)]).length === 0);
+ok("powershell -enc", ["-enc", "-EncodedCommand", "-ec", "-e", "/enc"].every(f =>
+  ids(S.runRules(RULES, [proc(PS, `powershell.exe -nop ${f} SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoA`)])).has("SYSMON_PS_ENCODED")));
+ok("powershell -ExecutionPolicy silencieux", S.runRules(RULES, [proc(PS, "powershell -ExecutionPolicy Bypass -File x.ps1", "C:\\Windows\\System32\\svchost.exe")]).length === 0);
+function lsass(src, acc) {
+  return {timestamp: new Date(2026, 10, 8, 14, 9), source: "sysmon", event_type: "process_access", outcome: "info",
+          host: "PC01", process: src, target: "C:\\Windows\\system32\\lsass.exe", granted_access: acc, raw: "x"};
+}
+ok("lsass accès mémoire", ids(S.runRules(RULES, [lsass("C:\\Windows\\System32\\rundll32.exe", "0x1010")])).has("SYSMON_LSASS_ACCESS"));
+ok("lsass antivirus filtré", S.runRules(RULES, [lsass("C:\\ProgramData\\Defender\\MsMpEng.exe", "0x1410")]).length === 0);
+ok("échantillon Sysmon : 6 règles + CTI", (() => {
+  const ev = S.parseText(require("./samples.js") && globalThis.MINISIEM_SAMPLES.sysmon, 2026);
+  const al = S.runRules(RULES, ev);
+  const all = al.concat(S.ctiDetectContacts(S.ctiIndex(require("./threat_feed.js")), ev, al));
+  const got = ids(all);
+  return ["SYSMON_OFFICE_SHELL", "SYSMON_PS_ENCODED", "SYSMON_LOLBIN_DOWNLOAD", "SYSMON_LOLBIN_NETWORK",
+          "SYSMON_RUN_KEY", "SYSMON_LSASS_ACCESS", "THREAT_INTEL_HIT"].every(r => got.has(r));
+})());
+ok("texte et XML mélangés", (() => {
+  const s = globalThis.MINISIEM_SAMPLES;
+  const n = S.parseText([s.auth, s.win].join("\n"), 2026);
+  return n.some(e => e.source === "windows") && n.some(e => e.source === "auth.log");
+})());
+
 // CTI
 const FEED = require("./threat_feed.js");
 const cti = S.ctiIndex(FEED);

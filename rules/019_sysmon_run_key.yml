@@ -1,0 +1,18 @@
+id: SYSMON_RUN_KEY
+title: Persistance par une clé de registre Run
+type: match
+level: medium
+attack: T1547.001
+tactic: Persistence
+description: >
+  Une valeur est écrite sous une clé Run ou RunOnce (Sysmon 13) : le programme
+  indiqué se relancera à chaque ouverture de session. C'est la persistance la
+  plus courante sous Windows ; un installeur légitime le fait aussi, d'où une
+  sévérité moyenne et le contrôle de la valeur écrite.
+selection:
+  event_type: registry_set
+  target:
+    contains: '\Software\Microsoft\Windows\CurrentVersion\Run'
+group_by:
+  - host
+  - process

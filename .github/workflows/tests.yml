@@ -1,0 +1,40 @@
+# Tests à chaque publication : moteur Python, moteur JavaScript de la console,
+# parité entre les deux, fichiers générés à jour, et règles exportées au format
+# Sigma passées au validateur officiel.
+# Actions épinglées par empreinte de commit : une étiquette déplacée ne peut pas injecter de code.
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r requirements.txt pytest sigma-cli
+      - name: Tests Python (parsers, règles, CTI, exports, parité avec le moteur JS)
+        run: python -m pytest -q
+      - name: Tests du moteur JavaScript (console web)
+        run: node web/demo.test.js
+      - name: Fichiers générés à jour (journaux d'exemple, données de la console)
+        run: |
+          python generate_logs.py --outdir samples
+          python build_web_rules.py
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+      - name: Règles au format Sigma (validateur officiel)
+        run: |
+          python analyze.py --export-sigma sigma
+          sigma check sigma

@@ -74,19 +74,61 @@
   const EVTX_MAP = {4625:["win_logon","failure"],4624:["win_logon","success"],
     4672:["win_special_priv","info"],4720:["win_account_created","info"],
     4732:["win_group_add","info"],1102:["win_log_cleared","info"]};
+  // Sysmon : EventID -> catégorie de journal Sigma, reprise comme event_type
+  const SYSMON_MAP = {1:"process_creation", 3:"network_connection", 10:"process_access",
+    11:"file_event", 13:"registry_set", 22:"dns_query"};
+
+  const XML_ENT = {amp:"&", lt:"<", gt:">", quot:'"', apos:"'"};
+  function xmlText(s) {
+    return s.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (m, e) =>
+      e[0] !== "#" ? XML_ENT[e] :
+      String.fromCodePoint(e[1] === "x" ? parseInt(e.slice(2), 16) : +e.slice(1)));
+  }
+  function bareUser(u) { return u ? u.split("\\").pop() : null; }
+
+  function sysmonEvent(eid, ts, host, data, raw) {
+    const ev = {timestamp: ts, source: "sysmon", event_type: SYSMON_MAP[eid], outcome: "info",
+                host: host, event_id: eid, raw: raw,
+                user: bareUser(data.User || data.SourceUser)};
+    if (eid === 1) {
+      ev.process = data.Image; ev.parent_process = data.ParentImage;
+      ev.command_line = data.CommandLine; ev.detail = data.IntegrityLevel;
+    } else if (eid === 3) {
+      ev.process = data.Image; ev.source_ip = data.SourceIp || null;
+      ev.dest_ip = data.DestinationIp || null;
+      ev.dest_port = /^\d+$/.test((data.DestinationPort || "").trim()) ? +data.DestinationPort : null;
+      ev.proto = data.Protocol; ev.target = data.DestinationHostname || null;
+    } else if (eid === 10) {
+      ev.process = data.SourceImage; ev.target = data.TargetImage;
+      ev.granted_access = (data.GrantedAccess || "").toLowerCase() || null;
+    } else if (eid === 11) {
+      ev.process = data.Image; ev.target = data.TargetFilename;
+    } else if (eid === 13) {
+      ev.process = data.Image; ev.target = data.TargetObject; ev.detail = data.Details;
+    } else if (eid === 22) {
+      ev.process = data.Image; ev.target = data.QueryName; ev.detail = data.QueryResults;
+    }
+    return ev;
+  }
 
   function parseEvtxBlock(block) {
-    const eidM = /<EventID>(\d+)<\/EventID>/.exec(block);
+    const eidM = /<EventID\b[^>]*>\s*(\d+)\s*<\/EventID>/.exec(block);
     if (!eidM) return null;
     const eid = +eidM[1];
-    if (!EVTX_MAP[eid]) return null;
-    const tM = /<TimeCreated SystemTime="([^"]+)"/.exec(block);
+    const prov = (/<Provider\b[^>]*\bName=["']([^"']*)["']/.exec(block) || [, ""])[1];
+    const chan = (/<Channel>([^<]*)<\/Channel>/.exec(block) || [, ""])[1];
+    const sysmon = /sysmon/i.test(prov + " " + chan);
+    if (!(sysmon ? SYSMON_MAP : EVTX_MAP)[eid]) return null;
+    const tM = /<TimeCreated\b[^>]*\bSystemTime=["']([^"']+)["']/.exec(block);
     if (!tM) return null;
-    const ts = new Date(tM[1].replace("Z", "Z"));
-    const host = (/<Computer>([^<]*)<\/Computer>/.exec(block) || [,"-"])[1];
+    const ts = new Date(tM[1].trim());
+    if (isNaN(ts)) return null;
+    const host = xmlText((/<Computer>([^<]*)<\/Computer>/.exec(block) || [,"-"])[1]) || "-";
     const data = {}; let d;
-    const RE_DATA = /<Data Name="([^"]+)">([^<]*)<\/Data>/g;
-    while ((d = RE_DATA.exec(block))) data[d[1]] = d[2];
+    const RE_DATA = /<Data Name=["']([^"']+)["']\s*>([^<]*)<\/Data>/g;
+    while ((d = RE_DATA.exec(block))) data[d[1]] = xmlText(d[2]);
+    const raw = block.split(/\s+/).filter(Boolean).join(" ");
+    if (sysmon) return sysmonEvent(eid, ts, host, data, raw);
     const [etype, outcome] = EVTX_MAP[eid];
     let user = data.TargetUserName || data.SubjectUserName || null;
     let ip = data.IpAddress || null;
@@ -96,18 +138,17 @@
     else if (eid === 4625 || eid === 4624) detail = data.LogonType;
     return {timestamp: ts, source: "windows", event_type: etype, outcome: outcome,
             host: host, source_ip: ip, user: user, event_id: eid, detail: detail,
-            raw: block.replace(/\s+/g, " ").slice(0, 300)};
+            raw: raw};
   }
 
+  // Accepte un fichier XML Windows (Sécurité ou Sysmon), un journal texte, ou un
+  // mélange des deux : les blocs <Event> sont extraits, le reste lu ligne à ligne.
   function parseText(text, year) {
     year = year || new Date().getFullYear();
     const events = [];
-    if (text.trimStart().startsWith("<")) {
-      const blocks = text.match(/<Event\b[\s\S]*?<\/Event>/g) || [];
-      for (const b of blocks) { const e = parseEvtxBlock(b); if (e) events.push(e); }
-      return events;
-    }
-    for (const line of text.split(/\r?\n/)) {
+    const RE_BLOCK = /<Event\b[\s\S]*?<\/Event>/g;
+    for (const b of text.match(RE_BLOCK) || []) { const e = parseEvtxBlock(b); if (e) events.push(e); }
+    for (const line of text.replace(RE_BLOCK, "\n").split(/\r?\n/)) {
       if (!line.trim()) continue;
       const e = parseUfw(line, year) || parseAuth(line, year) || parseApache(line);
       if (e) events.push(e);
@@ -125,10 +166,17 @@
         if (op === "contains") {
           const hay = String(value == null ? "" : value).toLowerCase();
           if (!asList(operand).some(o => hay.indexOf(String(o).toLowerCase()) >= 0)) return false;
+        } else if (op === "endswith") {
+          const hay = String(value == null ? "" : value).toLowerCase();
+          if (value == null || !asList(operand).some(o => hay.endsWith(String(o).toLowerCase()))) return false;
         } else if (op === "regex") {
           if (value == null || !new RegExp(operand, "i").test(String(value))) return false;
         } else if (op === "in") {
           if (asList(operand).indexOf(value) < 0) return false;
+        } else if (op === "gte") {
+          if (value == null || value < operand) return false;
+        } else if (op === "lte") {
+          if (value == null || value > operand) return false;
         } else return false;
       }
       return true;
@@ -138,8 +186,14 @@
   }
 
   function matches(ev, cond) {
-    for (const f of Object.keys(cond)) if (!matchField(ev[f], cond[f])) return false;
+    for (const f of Object.keys(cond || {})) if (!matchField(ev[f], cond[f])) return false;
     return true;
+  }
+
+  // Sélection (ou precondition / trigger) moins le filtre d'exclusion de la règle
+  function selected(ev, rule, key) {
+    if (!matches(ev, rule[key || "selection"])) return false;
+    return !(rule.filter && matches(ev, rule.filter));
   }
 
   function keyOf(ev, groupBy) { return groupBy.map(g => ev[g]).join("||"); }
@@ -157,7 +211,7 @@
   function runMatch(rule, events) {
     const gb = rule.group_by || ["source_ip", "user"];
     const buckets = {};
-    for (const e of events) if (matches(e, rule.selection))
+    for (const e of events) if (selected(e, rule))
       (buckets[keyOf(e, gb)] = buckets[keyOf(e, gb)] || []).push(e);
     return Object.values(buckets).map(g => alertFrom(rule, g));
   }
@@ -167,7 +221,7 @@
     const win = (rule.window_seconds || 300) * 1000;
     const thr = rule.count || 10, distinct = rule.distinct;
     const buckets = {};
-    for (const e of events) if (matches(e, rule.selection))
+    for (const e of events) if (selected(e, rule))
       (buckets[keyOf(e, gb)] = buckets[keyOf(e, gb)] || []).push(e);
     const reached = w => distinct
       ? new Set(w.map(e => e[distinct])).size >= thr : w.length >= thr;
@@ -191,8 +245,8 @@
     const ordered = events.slice().sort((a, b) => a.timestamp - b.timestamp);
     for (const e of ordered) {
       const k = keyOf(e, gb);
-      if (matches(e, rule.precondition)) (pending[k] = pending[k] || []).push(e);
-      else if (matches(e, rule.trigger)) {
+      if (selected(e, rule, "precondition")) (pending[k] = pending[k] || []).push(e);
+      else if (selected(e, rule, "trigger")) {
         const befores = (pending[k] || []).filter(p => e.timestamp - p.timestamp >= 0 && e.timestamp - p.timestamp <= win);
         if (befores.length >= minPre) { alerts.push(alertFrom(rule, befores.concat([e]))); pending[k] = []; }
       }
@@ -204,7 +258,7 @@
     const gb = rule.group_by || ["user"];
     const minSup = rule.min_support || 2;
     const byUser = {};
-    for (const e of events) if (matches(e, rule.selection))
+    for (const e of events) if (selected(e, rule))
       (byUser[keyOf(e, gb)] = byUser[keyOf(e, gb)] || []).push(e);
     const alerts = [];
     for (const group of Object.values(byUser)) {
@@ -235,7 +289,8 @@
     "203.0.113.66": {country:"Russie",city:"Moscou",lat:55.7558,lon:37.6173},
     "198.51.100.23": {country:"Chine",city:"Shanghai",lat:31.2304,lon:121.4737},
     "203.0.113.9":   {country:"Pays-Bas",city:"Amsterdam",lat:52.3676,lon:4.9041},
-    "198.51.100.77": {country:"Brésil",city:"São Paulo",lat:-23.5505,lon:-46.6333}
+    "198.51.100.77": {country:"Brésil",city:"São Paulo",lat:-23.5505,lon:-46.6333},
+    "203.0.113.200": {country:"Iran",city:"Téhéran",lat:35.6892,lon:51.3890}
   };
   function enrich(alerts) {
     for (const a of alerts) { const g = GEO[a.source_ip]; if (g) Object.assign(a, g); }
@@ -275,9 +330,9 @@
   function ctiDetectContacts(cti, events, existing) {
     const already = new Set(existing.map(a => a.source_ip).filter(Boolean));
     const byIp = {};
-    for (const e of events)
-      if (e.source_ip && cti.ip[e.source_ip] && !already.has(e.source_ip))
-        (byIp[e.source_ip] = byIp[e.source_ip] || []).push(e);
+    for (const e of events)                    // source puis destination (Sysmon 3)
+      for (const ip of new Set([e.source_ip, e.dest_ip]))
+        if (ip && cti.ip[ip] && !already.has(ip)) (byIp[ip] = byIp[ip] || []).push(e);
     const alerts = [];
     for (const ip of Object.keys(byIp)) {
       const evs = byIp[ip].sort((a,b)=>a.timestamp-b.timestamp);
@@ -295,7 +350,7 @@
   }
 
   root.MiniSIEM = {parseText, parseAuth, parseApache, parseUfw, parseEvtxBlock,
-                   runRules, matches, matchField, enrich, SEVERITY_ORDER, GEO,
+                   runRules, matches, matchField, selected, enrich, SEVERITY_ORDER, GEO,
                    ctiIndex, ctiEnrich, ctiDetectContacts};
   if (typeof module !== "undefined" && module.exports) module.exports = root.MiniSIEM;
 })(typeof window !== "undefined" ? window : globalThis);

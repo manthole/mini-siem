@@ -1,9 +1,12 @@
 """Moteur de détection piloté par des règles YAML (format proche de Sigma).
 
-Trois types de règles sont gérés en V1 :
-  - match      : un seul événement suffit (ex : échec sudo "NOT in sudoers")
-  - threshold  : N événements d'une même clé dans une fenêtre de temps
-  - sequence   : des événements A suivis d'un événement B, même clé
+Quatre types de règles :
+  - match         : un seul événement suffit (ex : échec sudo "NOT in sudoers")
+  - threshold     : N événements d'une même clé dans une fenêtre de temps
+  - sequence      : des événements A suivis d'un événement B, même clé
+  - baseline_hour : connexion à une heure inhabituelle pour le compte
+Une règle peut porter un `filter` : les événements qui y correspondent sont
+écartés (équivalent de « selection and not filter » en Sigma).
 Ajouter une détection = ajouter un fichier .yml, sans toucher au code.
 """
 from __future__ import annotations
@@ -28,13 +31,18 @@ def _match_field(value: Any, expected: Any) -> bool:
     `expected` peut être :
       - une valeur          -> égalité
       - une liste           -> appartenance
-      - un dict d'opérateur -> {contains|regex|in|gte|lte: ...}
+      - un dict d'opérateur -> {contains|endswith|regex|in|gte|lte: ...}
+    contains et endswith acceptent une liste (OU) et ignorent la casse, comme en Sigma.
     """
     if isinstance(expected, dict):
         for op, operand in expected.items():
             if op == "contains":
                 hay = str(value or "").lower()
                 if not any(str(o).lower() in hay for o in _as_list(operand)):
+                    return False
+            elif op == "endswith":
+                hay = str(value or "").lower()
+                if value is None or not any(hay.endswith(str(o).lower()) for o in _as_list(operand)):
                     return False
             elif op == "regex":
                 if value is None or not re.search(operand, str(value), re.I):
@@ -74,6 +82,15 @@ def _matches(ev: Event, conditions: dict[str, Any]) -> bool:
     return True
 
 
+def _selected(ev: Event, rule: dict, key: str = "selection") -> bool:
+    """L'événement correspond-il à `key` (selection, precondition, trigger)
+    sans être écarté par le `filter` de la règle ?"""
+    if not _matches(ev, rule.get(key, {})):
+        return False
+    flt = rule.get("filter")
+    return not (flt and _matches(ev, flt))
+
+
 def _key(ev: Event, group_by: list[str]) -> tuple:
     return tuple(getattr(ev, g, None) for g in group_by)
 
@@ -100,24 +117,22 @@ def _alert_from(rule: dict, events: list[Event]) -> Alert:
 def _run_match(rule: dict, events: list[Event]) -> list[Alert]:
     """Une alerte par groupe (défaut : source_ip + user), pas par événement :
     on agrège les occurrences comme le ferait un vrai SIEM."""
-    sel = rule.get("selection", {})
     group_by = rule.get("group_by", ["source_ip", "user"])
     buckets: dict[tuple, list[Event]] = {}
     for e in events:
-        if _matches(e, sel):
+        if _selected(e, rule):
             buckets.setdefault(_key(e, group_by), []).append(e)
     return [_alert_from(rule, group) for group in buckets.values()]
 
 
 def _run_threshold(rule: dict, events: list[Event]) -> list[Alert]:
-    sel = rule.get("selection", {})
     group_by = rule.get("group_by", ["source_ip"])
     window = timedelta(seconds=rule.get("window_seconds", 300))
     threshold = rule.get("count", 10)
     distinct = rule.get("distinct")  # ex "dest_port" : compte les valeurs uniques
 
     buckets: dict[tuple, list[Event]] = {}
-    for e in sorted((e for e in events if _matches(e, sel)), key=lambda e: e.timestamp):
+    for e in sorted((e for e in events if _selected(e, rule)), key=lambda e: e.timestamp):
         buckets.setdefault(_key(e, group_by), []).append(e)
 
     def reached(window_events: list[Event]) -> bool:
@@ -140,8 +155,6 @@ def _run_threshold(rule: dict, events: list[Event]) -> list[Alert]:
 
 def _run_sequence(rule: dict, events: list[Event]) -> list[Alert]:
     """A suivi de B, pour une même clé, B dans la fenêtre après le dernier A."""
-    pre = rule.get("precondition", {})
-    trig = rule.get("trigger", {})
     group_by = rule.get("group_by", ["source_ip"])
     window = timedelta(seconds=rule.get("window_seconds", 600))
     min_pre = rule.get("min_preconditions", 1)
@@ -150,9 +163,9 @@ def _run_sequence(rule: dict, events: list[Event]) -> list[Alert]:
     alerts: list[Alert] = []
     for e in sorted(events, key=lambda e: e.timestamp):
         k = _key(e, group_by)
-        if _matches(e, pre):
+        if _selected(e, rule, "precondition"):
             pending.setdefault(k, []).append(e)
-        elif _matches(e, trig):
+        elif _selected(e, rule, "trigger"):
             befores = [p for p in pending.get(k, [])
                        if timedelta(0) <= e.timestamp - p.timestamp <= window]
             if len(befores) >= min_pre:
@@ -168,13 +181,12 @@ def _run_baseline_hour(rule: dict, events: list[Event]) -> list[Alert]:
     (celles où il se connecte au moins `min_support` fois). Une connexion dont
     l'heure n'est pas habituelle est signalée.
     """
-    sel = rule.get("selection", {})
     group_by = rule.get("group_by", ["user"])
     min_support = rule.get("min_support", 2)
 
     by_user: dict[tuple, list[Event]] = {}
     for e in events:
-        if _matches(e, sel):
+        if _selected(e, rule):
             by_user.setdefault(_key(e, group_by), []).append(e)
 
     alerts: list[Alert] = []

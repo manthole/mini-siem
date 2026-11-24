@@ -136,11 +136,74 @@ _EVTX_MAP = {
     1102: ("win_log_cleared", "info"),         # journal de sécurité effacé
 }
 
+# --- Sysmon (canal Microsoft-Windows-Sysmon/Operational) ---
+# Même enveloppe XML que les autres journaux Windows ; on reconnaît Sysmon à son
+# fournisseur ou à son canal. L'event_type reprend la catégorie de journal Sigma,
+# ce qui rend l'export Sigma direct (logsource product: windows, category: …).
+_SYSMON_MAP = {
+    1: "process_creation",     # création de processus (ligne de commande, parent)
+    3: "network_connection",   # connexion réseau
+    10: "process_access",      # un processus ouvre un autre processus (ex. LSASS)
+    11: "file_event",          # création de fichier
+    13: "registry_set",        # écriture d'une valeur de registre
+    22: "dns_query",           # requête DNS
+}
+
 _EVENT_BLOCK = re.compile(r"<Event\b.*?</Event>", re.S)
+
+
+def _is_sysmon(system: ET.Element) -> bool:
+    prov = system.find("Provider")
+    chan = system.find("Channel")
+    names = [prov.get("Name", "") if prov is not None else "",
+             (chan.text or "") if chan is not None else ""]
+    return any("sysmon" in n.lower() for n in names)
+
+
+def _bare_user(user: Optional[str]) -> Optional[str]:
+    """« PC-COMPTA01\\mmartin » -> « mmartin », pour pivoter avec les autres sources."""
+    return user.split("\\")[-1] if user else None
+
+
+def _sysmon_event(eid: int, ts: datetime, host: str, data: dict, raw: str) -> Event:
+    ev = Event(timestamp=ts, source="sysmon", event_type=_SYSMON_MAP[eid],
+               outcome="info", host=host, event_id=eid, raw=raw,
+               user=_bare_user(data.get("User") or data.get("SourceUser")))
+    if eid == 1:
+        ev.process = data.get("Image")
+        ev.parent_process = data.get("ParentImage")
+        ev.command_line = data.get("CommandLine")
+        ev.detail = data.get("IntegrityLevel")
+    elif eid == 3:
+        ev.process = data.get("Image")
+        ev.source_ip = data.get("SourceIp") or None
+        ev.dest_ip = data.get("DestinationIp") or None
+        port = (data.get("DestinationPort") or "").strip()
+        ev.dest_port = int(port) if port.isdigit() else None
+        ev.proto = data.get("Protocol")
+        ev.target = data.get("DestinationHostname") or None
+    elif eid == 10:
+        ev.process = data.get("SourceImage")
+        ev.target = data.get("TargetImage")
+        ev.granted_access = (data.get("GrantedAccess") or "").lower() or None
+    elif eid == 11:
+        ev.process = data.get("Image")
+        ev.target = data.get("TargetFilename")
+    elif eid == 13:
+        ev.process = data.get("Image")
+        ev.target = data.get("TargetObject")
+        ev.detail = data.get("Details")
+    elif eid == 22:
+        ev.process = data.get("Image")
+        ev.target = data.get("QueryName")
+        ev.detail = data.get("QueryResults")
+    return ev
 
 
 def _evtx_time(raw: str) -> Optional[datetime]:
     raw = raw.strip().replace("Z", "+00:00")
+    # Windows écrit 7 chiffres de fraction (100 ns) : on garde les microsecondes
+    raw = re.sub(r"(\.\d{6})\d+", r"\1", raw)
     try:
         return datetime.fromisoformat(raw).replace(tzinfo=None)
     except ValueError:
@@ -162,7 +225,8 @@ def parse_evtx_xml(block: str) -> Optional[Event]:
     if eid_el is None or not (eid_el.text or "").strip().isdigit():
         return None
     eid = int(eid_el.text.strip())
-    if eid not in _EVTX_MAP:
+    sysmon = _is_sysmon(system)
+    if eid not in (_SYSMON_MAP if sysmon else _EVTX_MAP):
         return None
 
     tc = system.find("TimeCreated")
@@ -173,6 +237,8 @@ def parse_evtx_xml(block: str) -> Optional[Event]:
     host = (host_el.text if host_el is not None else "-") or "-"
 
     data = {d.get("Name"): (d.text or "") for d in root.iter("Data")}
+    if sysmon:
+        return _sysmon_event(eid, ts, host, data, " ".join(block.split()))
     event_type, outcome = _EVTX_MAP[eid]
 
     user = data.get("TargetUserName") or data.get("SubjectUserName")
@@ -215,8 +281,8 @@ def parse_line(line: str, year: Optional[int] = None) -> Optional[Event]:
 def parse_file(path: str, year: Optional[int] = None) -> Iterator[Event]:
     """Lit un fichier de log et produit les Events reconnus.
 
-    Détecte les journaux Windows (XML, commençant par « < ») et les route vers
-    le parser EVTX ; sinon, auto-détection ligne par ligne (auth/Apache/pare-feu).
+    Détecte les journaux Windows (XML, commençant par « < » : journal de
+    sécurité ou Sysmon) et les route vers le parser EVTX ; sinon, auto-détection ligne par ligne (auth/Apache/pare-feu).
     """
     with open(path, encoding="utf-8", errors="replace") as fh:
         head = fh.read(256).lstrip()

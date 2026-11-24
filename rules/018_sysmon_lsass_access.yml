@@ -1,0 +1,36 @@
+id: SYSMON_LSASS_ACCESS
+title: Accès mémoire suspect au processus LSASS
+type: match
+level: critical
+attack: T1003.001
+tactic: Credential Access
+description: >
+  Un processus ouvre lsass.exe avec des droits de lecture mémoire (Sysmon 10,
+  GrantedAccess 0x1010, 0x1410, 0x1fffff…). LSASS garde les secrets des
+  sessions ouvertes : c'est ce que fait un outil de vol d'identifiants
+  (type Mimikatz) ou un dump mémoire. L'antivirus et les processus système
+  qui y accèdent légitimement sont écartés par le filtre.
+selection:
+  event_type: process_access
+  target:
+    endswith: '\lsass.exe'
+  granted_access:
+    in:
+      - '0x1010'
+      - '0x1410'
+      - '0x1438'
+      - '0x143a'
+      - '0x1f0fff'
+      - '0x1f1fff'
+      - '0x1f3fff'
+      - '0x1fffff'
+filter:
+  process:
+    endswith:
+      - '\MsMpEng.exe'
+      - '\MsSense.exe'
+      - '\wininit.exe'
+      - '\csrss.exe'
+group_by:
+  - host
+  - process
