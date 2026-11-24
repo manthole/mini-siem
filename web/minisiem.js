@@ -85,6 +85,12 @@
       String.fromCodePoint(e[1] === "x" ? parseInt(e.slice(2), 16) : +e.slice(1)));
   }
   function bareUser(u) { return u ? u.split("\\").pop() : null; }
+  // « 0x00001410 » -> « 0x1410 » : même écriture quel que soit l'outil d'export
+  function hex(v) {
+    if (!v) return null;
+    const t = String(v).trim();
+    return /^(0x)?[0-9a-f]+$/i.test(t) ? "0x" + parseInt(t, 16).toString(16) : t.toLowerCase();
+  }
 
   function sysmonEvent(eid, ts, host, data, raw) {
     const ev = {timestamp: ts, source: "sysmon", event_type: SYSMON_MAP[eid], outcome: "info",
@@ -100,7 +106,7 @@
       ev.proto = data.Protocol; ev.target = data.DestinationHostname || null;
     } else if (eid === 10) {
       ev.process = data.SourceImage; ev.target = data.TargetImage;
-      ev.granted_access = (data.GrantedAccess || "").toLowerCase() || null;
+      ev.granted_access = hex(data.GrantedAccess);
     } else if (eid === 11) {
       ev.process = data.Image; ev.target = data.TargetFilename;
     } else if (eid === 13) {
@@ -205,7 +211,8 @@
             tactic: rule.tactic || "-", source_ip: first.source_ip || null,
             user: first.user || null, first_seen: first.timestamp, last_seen: last.timestamp,
             count: evs.length, description: rule.description || "",
-            evidence: evs.slice(0, 8).map(e => e.raw)};
+            evidence: evs.slice(0, 8).map(e => e.raw),
+            host: first.host && first.host !== "-" ? first.host : null, grouped_in: null};
   }
 
   function runMatch(rule, events) {
@@ -275,12 +282,62 @@
   const RUNNERS = {match: runMatch, threshold: runThreshold,
                    sequence: runSequence, baseline_hour: runBaselineHour};
 
+  // --- Corrélation entre règles : plusieurs détections différentes sur une même
+  // entité (l'hôte par défaut) dans une fenêtre -> un seul incident. Les alertes
+  // regroupées sont marquées (grouped_in) pour pouvoir les replier dans la console.
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function stamp(d) {
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+           `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  function chainAlert(rule, members) {
+    members.forEach(a => { a.grouped_in = rule.id; });
+    const pick = f => (members.find(a => a[f]) || {})[f] || null;
+    return {rule_id: rule.id, title: rule.title, severity: rule.level || "high",
+            attack: rule.attack || "-", tactic: rule.tactic || "-",
+            source_ip: pick("source_ip"), user: pick("user"),
+            first_seen: new Date(Math.min(...members.map(a => +a.first_seen))),
+            last_seen: new Date(Math.max(...members.map(a => +a.last_seen))),
+            count: members.length, description: rule.description || "",
+            evidence: members.map(a => `${stamp(a.first_seen)} [${a.severity}] ${a.rule_id} — ${a.title} (${a.attack})`),
+            host: members[0].host, grouped_in: null};
+  }
+  function runCorrelation(rule, alerts) {
+    const wanted = new Set(rule.rules || []);
+    const gb = rule.group_by || ["host"];
+    const win = (rule.window_seconds || 900) * 1000, need = rule.min_rules || 2;
+    const buckets = {};
+    for (const a of alerts) {
+      if (!wanted.has(a.rule_id) || a.grouped_in) continue;
+      if (gb.some(f => a[f] == null)) continue;
+      const k = gb.map(f => a[f]).join("||");
+      (buckets[k] = buckets[k] || []).push(a);
+    }
+    const out = [];
+    for (const g of Object.values(buckets)) {
+      g.sort((x, y) => (x.first_seen - y.first_seen) || (x.rule_id < y.rule_id ? -1 : x.rule_id > y.rule_id ? 1 : 0));
+      let i = 0;
+      while (i < g.length) {
+        let j = i;
+        while (j + 1 < g.length && g[j + 1].first_seen - g[i].first_seen <= win) j++;
+        const members = g.slice(i, j + 1);
+        if (new Set(members.map(a => a.rule_id)).size >= need) { out.push(chainAlert(rule, members)); i = j + 1; }
+        else i++;
+      }
+    }
+    return out;
+  }
+
+  // Règles sur les événements d'abord, puis corrélations sur les alertes obtenues
   function runRules(rules, events) {
     let alerts = [];
+    const correlations = [];
     for (const rule of rules) {
+      if (rule.type === "correlation") { correlations.push(rule); continue; }
       const runner = RUNNERS[rule.type || "match"];
       if (runner) alerts = alerts.concat(runner(rule, events));
     }
+    for (const rule of correlations) alerts = alerts.concat(runCorrelation(rule, alerts));
     return alerts;
   }
 
@@ -349,7 +406,258 @@
     return alerts;
   }
 
+
+  // --- Fichiers .evtx binaires (portage de minisiem/evtx.py) --------------
+  // En-tête de 4 Ko, blocs de 64 Ko, événements en XML binaire (jetons + modèles
+  // partagés + valeurs typées). Chaque événement est rendu en XML texte, puis lu
+  // par parseEvtxBlock comme un export classique.
+  const EVTX = (function () {
+    const MAGIC = "ElfFile\0", CHUNK = 0x10000, CHUNK_HDR = 0x200, REC = 0x2a2a;
+    const T = {NULL: 0, WSTR: 1, STR: 2, I8: 3, U8: 4, I16: 5, U16: 6, I32: 7, U32: 8,
+               I64: 9, U64: 10, R32: 11, R64: 12, BOOL: 13, BIN: 14, GUID: 15, SIZET: 16,
+               FT: 17, ST: 18, SID: 19, H32: 20, H64: 21, BINXML: 33};
+    const FIXED = {3: 1, 4: 1, 5: 2, 6: 2, 7: 4, 8: 4, 9: 8, 10: 8, 11: 4, 12: 8, 13: 4,
+                   15: 16, 17: 8, 18: 16, 20: 4, 21: 8};
+    const BAD = /[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]/g;
+    const dec16 = new TextDecoder("utf-16le"), dec8 = new TextDecoder("latin1");
+    const xmlText = s => s.replace(BAD, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const xmlAttr = s => xmlText(s).replace(/"/g, "&quot;");
+    const hexOf = (b) => Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+
+    function isEvtx(bytes) {
+      if (bytes.length < 8) return false;
+      for (let i = 0; i < 8; i++) if (bytes[i] !== MAGIC.charCodeAt(i)) return false;
+      return true;
+    }
+
+    function filetime(ticks) {                       // BigInt, centaines de ns depuis 1601
+      const sec = ticks / 10000000n, frac = ticks % 10000000n;
+      const d = new Date(Number(sec - 11644473600n) * 1000);
+      return d.toISOString().slice(0, 19) + "." + frac.toString().padStart(7, "0") + "Z";
+    }
+
+    function Chunk(b) { this.b = b; this.dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+                        this.names = new Map(); this.templates = new Map(); }
+    const C = Chunk.prototype;
+    C.u16 = function (p) { return this.dv.getUint16(p, true); };
+    C.u32 = function (p) { return this.dv.getUint32(p, true); };
+    C.utf16 = function (p, n) { return dec16.decode(this.b.subarray(p, p + 2 * n)); };
+    C.name = function (off, pos) {
+      if (!this.names.has(off)) { const n = this.u16(off + 6); this.names.set(off, [this.utf16(off + 8, n), 10 + 2 * n]); }
+      const [text, len] = this.names.get(off);
+      return [text, off === pos ? pos + len : pos];
+    };
+    C.records = function () {
+      const out = [];
+      const free = Math.min(this.u32(0x30) || this.b.length, this.b.length);
+      let pos = CHUNK_HDR;
+      while (pos + 28 <= free) {
+        const magic = this.u32(pos), size = this.u32(pos + 4);
+        if (magic !== REC || size < 28 || pos + size > this.b.length) break;
+        try { out.push(this.renderFragment(pos + 24)); } catch (e) { /* enregistrement abîmé */ }
+        pos += size;
+      }
+      return out;
+    };
+    C.renderFragment = function (pos) { const out = []; this.render(this.fragment(pos)[0], [], out); return out.join(""); };
+    C.fragment = function (pos) {
+      const nodes = [];
+      for (;;) {
+        if (pos >= this.b.length) throw new Error("fin inattendue");
+        const tok = this.b[pos];
+        if (tok === 0x00) return [nodes, pos + 1];
+        if (tok === 0x0f) pos += 4;
+        else if (tok === 0x0c) { const r = this.templateInstance(pos); nodes.push(r[0]); return [nodes, r[1]]; }
+        else if ((tok & 0x0f) === 0x01) { const r = this.element(pos); nodes.push(r[0]); pos = r[1]; }
+        else throw new Error("jeton inattendu " + tok);
+      }
+    };
+    C.element = function (pos) {
+      const hasAttrs = this.b[pos] & 0x40;
+      pos += 7;
+      let name; [name, pos] = this.name(this.u32(pos), pos + 4);
+      const attrs = [];
+      if (hasAttrs) {
+        const end = pos + 4 + this.u32(pos);
+        pos += 4;
+        while (pos < end) {
+          const tok = this.b[pos];
+          if ((tok & 0x0f) !== 0x06) throw new Error("attribut attendu");
+          let an; [an, pos] = this.name(this.u32(pos + 1), pos + 5);
+          let content; [content, pos] = this.content(pos, false);
+          attrs.push([an, content]);
+          if (!(tok & 0x40)) break;
+        }
+      }
+      let tok = this.b[pos];
+      if (tok === 0x03) return [["elem", name, attrs, null], pos + 1];
+      if (tok !== 0x02) throw new Error("fin de balise attendue");
+      pos++;
+      const children = [];
+      for (;;) {
+        tok = this.b[pos];
+        if (tok === 0x04) return [["elem", name, attrs, children], pos + 1];
+        if ((tok & 0x0f) === 0x01) { const r = this.element(pos); children.push(r[0]); pos = r[1]; }
+        else { const r = this.content(pos, true); children.push(...r[0]); pos = r[1]; }
+      }
+    };
+    C.content = function (pos, single) {
+      const out = [];
+      for (;;) {
+        const tok = this.b[pos], base = tok & 0x0f;
+        if (base === 0x05) {
+          if (this.b[pos + 1] !== T.WSTR) throw new Error("valeur non textuelle");
+          const n = this.u16(pos + 2); out.push(["text", this.utf16(pos + 4, n)]); pos += 4 + 2 * n;
+        } else if (tok === 0x0d || tok === 0x0e) {
+          out.push(["subst", this.u16(pos + 1), tok === 0x0e]); pos += 4;
+        } else if (base === 0x08) {
+          out.push(["raw", "&#" + this.u16(pos + 1) + ";"]); pos += 3;
+        } else if (base === 0x09) {
+          let en; [en, pos] = this.name(this.u32(pos + 1), pos + 5); out.push(["raw", "&" + en + ";"]);
+        } else if (base === 0x07) {
+          const n = this.u16(pos + 1); out.push(["text", this.utf16(pos + 3, n)]); pos += 3 + 2 * n;
+        } else if (tok === 0x0a) {
+          let target; [target, pos] = this.name(this.u32(pos + 1), pos + 5);
+          let data = "";
+          if (this.b[pos] === 0x0b) { const n = this.u16(pos + 1); data = this.utf16(pos + 3, n); pos += 3 + 2 * n; }
+          out.push(["raw", "<?" + target + " " + data + "?>"]);
+        } else {
+          if (!out.length) throw new Error("valeur attendue");
+          return [out, pos];
+        }
+        if (single) return [out, pos];
+      }
+    };
+    C.templateInstance = function (pos) {
+      const def = this.u32(pos + 6);
+      pos += 10;
+      if (!this.templates.has(def)) this.templates.set(def, this.fragment(def + 24)[0]);
+      if (def === pos) pos = def + 24 + this.u32(def + 20);
+      const count = this.u32(pos); pos += 4;
+      const descs = [];
+      for (let i = 0; i < count; i++) descs.push([this.u16(pos + 4 * i), this.b[pos + 4 * i + 2]]);
+      pos += 4 * count;
+      const values = [];
+      for (const [size, type] of descs) { values.push([type, pos, size]); pos += size; }
+      return [["tmpl", this.templates.get(def), values], pos];
+    };
+    C.render = function (nodes, values, out) {
+      for (const node of nodes) {
+        if (node[0] === "tmpl") { this.render(node[1], node[2], out); continue; }
+        if (node[0] !== "elem") continue;
+        const [, name, attrs, children] = node;
+        out.push("<" + name);
+        for (const [an, content] of attrs) {
+          const text = this.textOf(content, values);
+          if (text !== null) out.push(" " + an + '="' + xmlAttr(text) + '"');
+        }
+        if (children === null) { out.push("/>"); continue; }
+        out.push(">");
+        for (const c of children) {
+          if (c[0] === "elem" || c[0] === "tmpl") this.render([c], values, out);
+          else if (c[0] === "subst") out.push(this.valueXml(values, c[1]));
+          else if (c[0] === "raw") out.push(c[1]);
+          else out.push(xmlText(c[1]));
+        }
+        out.push("</" + name + ">");
+      }
+    };
+    C.textOf = function (content, values) {
+      const parts = [];
+      for (const c of content) {
+        if (c[0] === "subst") {
+          const v = this.value(values, c[1]);
+          if (v === null && c[2] && content.length === 1) return null;
+          parts.push(v || "");
+        } else parts.push(c[1]);
+      }
+      return parts.join("");
+    };
+    C.valueXml = function (values, i) {
+      if (i >= values.length) return "";
+      const [type, pos, size] = values[i];
+      if (type === T.BINXML) return size ? this.renderFragment(pos) : "";
+      return xmlText(this.value(values, i) || "");
+    };
+    C.value = function (values, i) {
+      if (i >= values.length) return null;
+      const [type, pos, size] = values[i];
+      if (type === T.NULL || size === 0) return null;
+      const raw = this.b.subarray(pos, pos + size);
+      if (type & 0x80) return splitArray(type & 0x7f, raw).map(x => scalar(type & 0x7f, x)).join(", ");
+      return scalar(type, raw);
+    };
+
+    function splitArray(type, raw) {
+      if (type === T.WSTR) return dec16.decode(raw).split("\0").filter(Boolean).map(s => {
+        const u = new Uint8Array(s.length * 2); for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); u[2*i] = c & 255; u[2*i+1] = c >> 8; } return u; });
+      if (type === T.STR) { const parts = []; let st = 0; for (let i = 0; i <= raw.length; i++) if (i === raw.length || raw[i] === 0) { if (i > st) parts.push(raw.subarray(st, i)); st = i + 1; } return parts; }
+      const w = FIXED[type];
+      if (!w) return [raw];
+      const out = []; for (let i = 0; i + w <= raw.length; i += w) out.push(raw.subarray(i, i + w)); return out;
+    }
+
+    function scalar(type, raw) {
+      const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+      switch (type) {
+        case T.WSTR: return dec16.decode(raw).replace(/\0+$/, "");
+        case T.STR: return dec8.decode(raw).replace(/\0+$/, "");
+        case T.I8: return String(dv.getInt8(0));
+        case T.U8: return String(dv.getUint8(0));
+        case T.I16: return String(dv.getInt16(0, true));
+        case T.U16: return String(dv.getUint16(0, true));
+        case T.I32: return String(dv.getInt32(0, true));
+        case T.U32: return String(dv.getUint32(0, true));
+        case T.I64: return dv.getBigInt64(0, true).toString();
+        case T.U64: return dv.getBigUint64(0, true).toString();
+        case T.H32: return "0x" + dv.getUint32(0, true).toString(16);
+        case T.H64: return "0x" + dv.getBigUint64(0, true).toString(16).padStart(16, "0");
+        case T.SIZET: { let v = 0n; for (let i = raw.length - 1; i >= 0; i--) v = (v << 8n) | BigInt(raw[i]); return "0x" + v.toString(16).padStart(2 * raw.length, "0"); }
+        case T.BOOL: return dv.getUint32(0, true) ? "true" : "false";
+        case T.R32: return String(dv.getFloat32(0, true));
+        case T.R64: return String(dv.getFloat64(0, true));
+        case T.FT: return filetime(dv.getBigUint64(0, true));
+        case T.ST: {
+          const v = i => dv.getUint16(2 * i, true), p = (n, w) => String(n).padStart(w, "0");
+          return `${p(v(0), 4)}-${p(v(1), 2)}-${p(v(3), 2)}T${p(v(4), 2)}:${p(v(5), 2)}:${p(v(6), 2)}.${p(v(7), 3)}Z`;
+        }
+        case T.GUID: {
+          const h = (n, w) => n.toString(16).toUpperCase().padStart(w, "0");
+          return "{" + h(dv.getUint32(0, true), 8) + "-" + h(dv.getUint16(4, true), 4) + "-" + h(dv.getUint16(6, true), 4) +
+                 "-" + hexOf(raw.subarray(8, 10)).toUpperCase() + "-" + hexOf(raw.subarray(10, 16)).toUpperCase() + "}";
+        }
+        case T.SID: {
+          const count = raw[1];
+          let auth = 0; for (let i = 2; i < 8; i++) auth = auth * 256 + raw[i];
+          const subs = []; for (let i = 0; i < count; i++) subs.push(dv.getUint32(8 + 4 * i, true));
+          return "S-" + [raw[0], auth, ...subs].join("-");
+        }
+        case T.BIN: return hexOf(raw).toUpperCase();
+        default: return "";
+      }
+    }
+
+    function read(bytes) {
+      if (!isEvtx(bytes)) throw new Error("ce n'est pas un fichier .evtx");
+      const start = (bytes[0x28] | (bytes[0x29] << 8)) || 0x1000;
+      const out = [];
+      for (let off = start; off + CHUNK_HDR <= bytes.length; off += CHUNK) {
+        const chunk = bytes.subarray(off, Math.min(off + CHUNK, bytes.length));
+        if (String.fromCharCode(...chunk.subarray(0, 8)) === "ElfChnk\0") out.push(...new Chunk(chunk).records());
+      }
+      return out;
+    }
+    return {isEvtx, read};
+  })();
+
+  // Octets d'un fichier .evtx -> événements normalisés
+  function parseEvtx(bytes) {
+    if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
+    return EVTX.read(bytes).map(parseEvtxBlock).filter(Boolean);
+  }
+
   root.MiniSIEM = {parseText, parseAuth, parseApache, parseUfw, parseEvtxBlock,
+                   parseEvtx, isEvtx: EVTX.isEvtx, readEvtx: EVTX.read,
                    runRules, matches, matchField, selected, enrich, SEVERITY_ORDER, GEO,
                    ctiIndex, ctiEnrich, ctiDetectContacts};
   if (typeof module !== "undefined" && module.exports) module.exports = root.MiniSIEM;

@@ -1,0 +1,26 @@
+id: SYSMON_INFECTION_CHAIN
+title: Chaîne d'infection sur un poste de travail
+type: correlation
+level: critical
+attack: T1204.002
+tactic: Execution
+description: >
+  Au moins trois détections Sysmon différentes sur le même poste en moins de
+  15 minutes : document Office qui lance un shell, PowerShell encodé,
+  téléchargement, connexion d'un binaire détourné, persistance, accès ou vidage de LSASS.
+  Prises une à une, ces alertes peuvent être du bruit ; ensemble, elles
+  dessinent une compromission en cours. Le SIEM ouvre un seul incident
+  critique qui regroupe toute la chronologie, au lieu de six alertes à
+  trier séparément.
+rules:
+  - SYSMON_OFFICE_SHELL
+  - SYSMON_PS_ENCODED
+  - SYSMON_LOLBIN_DOWNLOAD
+  - SYSMON_LOLBIN_NETWORK
+  - SYSMON_RUN_KEY
+  - SYSMON_LSASS_ACCESS
+  - SYSMON_COMSVCS_MINIDUMP
+min_rules: 3
+window_seconds: 900
+group_by:
+  - host

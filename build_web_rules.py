@@ -32,6 +32,8 @@ samples = {
     "fw": Path("samples/ufw.log").read_text(encoding="utf-8"),
     "win": Path("samples/windows_events.xml").read_text(encoding="utf-8"),
     "sysmon": Path("samples/sysmon_events.xml").read_text(encoding="utf-8"),
+    # le même journal Sysmon au format binaire .evtx, encodé en Base64
+    "sysmon_evtx": __import__("base64").b64encode(Path("samples/sysmon_events.evtx").read_bytes()).decode(),
 }
 samples_js = ("/* Généré par build_web_rules.py — logs d'exemple synthétiques. */\n"
               "(function (root) {\n  root.MINISIEM_SAMPLES = " +

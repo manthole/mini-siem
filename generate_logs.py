@@ -8,6 +8,7 @@ afin de fournir un jeu de données reproductible. Il produit cinq sources :
   - ufw.log            (pare-feu)        : scan de ports
   - windows_events.xml (journal Sécurité): brute force, persistance, journal effacé
   - sysmon_events.xml  (Sysmon)          : document piégé -> PowerShell -> C2 -> LSASS
+Les deux journaux Windows sont aussi écrits au format binaire .evtx.
 Chaque scénario est conçu pour déclencher une règle, plus du trafic normal.
 
 Usage :
@@ -21,6 +22,8 @@ import random
 from datetime import datetime, timedelta
 from pathlib import Path
 from xml.sax.saxutils import escape
+
+from minisiem.evtx import write_evtx
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -372,6 +375,12 @@ def main() -> int:
     (outdir / "sysmon_events.xml").write_text(
         "\n".join(x for _, x in sysmon) + "\n", encoding="utf-8")
     print(f"[+] {len(sysmon):3d} événements -> {outdir / 'sysmon_events.xml'}")
+
+    # Les mêmes journaux Windows au format binaire natif (.evtx), tels que les produit
+    # l'Observateur d'événements : le mini-SIEM les lit directement.
+    for name, blocks in (("windows_events.evtx", evtx), ("sysmon_events.evtx", sysmon)):
+        (outdir / name).write_bytes(write_evtx([x for _, x in blocks]))
+        print(f"[+] {len(blocks):3d} événements -> {outdir / name} (binaire)")
     return 0
 
 

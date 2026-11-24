@@ -96,3 +96,6 @@ tbody tr:focus-visible, .rulecard:focus-visible, button:focus-visible { outline:
 
 /* Page racine : simple redirection vers la console */
 body.redirect { min-height:100vh; display:flex; align-items:center; justify-content:center; font-size:15px; }
+
+/* Incidents corrélés */
+.grp { display:inline-block; margin-top:3px; font-size:11.5px; color:var(--crit); border:1px solid var(--crit); border-radius:999px; padding:0 8px; }

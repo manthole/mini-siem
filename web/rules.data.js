@@ -409,6 +409,48 @@
       "process",
       "dest_ip"
     ]
+  },
+  {
+    "id": "SYSMON_INFECTION_CHAIN",
+    "title": "Chaîne d'infection sur un poste de travail",
+    "type": "correlation",
+    "level": "critical",
+    "attack": "T1204.002",
+    "tactic": "Execution",
+    "description": "Au moins trois détections Sysmon différentes sur le même poste en moins de 15 minutes : document Office qui lance un shell, PowerShell encodé, téléchargement, connexion d'un binaire détourné, persistance, accès ou vidage de LSASS. Prises une à une, ces alertes peuvent être du bruit ; ensemble, elles dessinent une compromission en cours. Le SIEM ouvre un seul incident critique qui regroupe toute la chronologie, au lieu de six alertes à trier séparément.\n",
+    "rules": [
+      "SYSMON_OFFICE_SHELL",
+      "SYSMON_PS_ENCODED",
+      "SYSMON_LOLBIN_DOWNLOAD",
+      "SYSMON_LOLBIN_NETWORK",
+      "SYSMON_RUN_KEY",
+      "SYSMON_LSASS_ACCESS",
+      "SYSMON_COMSVCS_MINIDUMP"
+    ],
+    "min_rules": 3,
+    "window_seconds": 900,
+    "group_by": [
+      "host"
+    ]
+  },
+  {
+    "id": "SYSMON_COMSVCS_MINIDUMP",
+    "title": "Vidage mémoire par comsvcs.dll (MiniDump)",
+    "type": "match",
+    "level": "critical",
+    "attack": "T1003.001",
+    "tactic": "Credential Access",
+    "description": "rundll32 appelle la fonction MiniDump de comsvcs.dll (Sysmon 1), une DLL signée de Windows qui écrit la mémoire d'un processus sur le disque. C'est l'une des façons les plus répandues de vider LSASS sans apporter d'outil : on récupère ensuite les secrets hors ligne. Repérée en testant le mini-SIEM sur les enregistrements d'attaques publics EVTX-ATTACK-SAMPLES.\n",
+    "selection": {
+      "event_type": "process_creation",
+      "command_line": {
+        "regex": "comsvcs(?:\\.dll)?[\"']?[\\s,]+(?:#\\s*24|minidump)"
+      }
+    },
+    "group_by": [
+      "host",
+      "user"
+    ]
   }
 ];
   if (typeof module !== 'undefined' && module.exports) module.exports = root.MINISIEM_RULES;

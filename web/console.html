@@ -24,6 +24,7 @@
     <button data-action="sample" data-sample="fw">Exemple pare-feu</button>
     <button data-action="sample" data-sample="win">Exemple Windows</button>
     <button data-action="sample" data-sample="sysmon">Exemple Sysmon</button>
+    <button data-action="sample" data-sample="sysmon_evtx" title="Le même journal au format binaire natif de Windows">Exemple .evtx</button>
     <button data-action="load-all">Tout charger</button>
     <span class="meta push" id="srcInfo"></span>
   </div>
@@ -45,6 +46,7 @@
         <label class="chk"><input type="checkbox" class="sevf" value="medium" checked> medium</label>
         <label class="chk"><input type="checkbox" class="sevf" value="low" checked> low</label>
         <label class="chk"><input type="checkbox" id="openOnly"> non résolues</label>
+        <label class="chk" title="Les détections qui composent un incident corrélé sont repliées sous lui"><input type="checkbox" id="grouped" checked> regrouper par incident</label>
       </div>
     </div>
     <div class="panel tight tablewrap">

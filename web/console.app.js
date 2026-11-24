@@ -31,7 +31,8 @@
     notify: "Notifier l'équipe / ouvrir un ticket",
   };
   const SAMPLE_NAMES = {auth: "Exemple SSH", web: "Exemple web", fw: "Exemple pare-feu",
-                        win: "Exemple Windows", sysmon: "Exemple Sysmon"};
+                        win: "Exemple Windows", sysmon: "Exemple Sysmon",
+                        sysmon_evtx: "Exemple Sysmon"};
 
   const store = {
     get(k, def) { try { return JSON.parse(localStorage.getItem(k)) || def; } catch (e) { return def; } },
@@ -47,7 +48,7 @@
   if (!state.ir || typeof state.ir !== "object" || Array.isArray(state.ir)) state.ir = {};
 
   const els = {};
-  ["file", "srcInfo", "kpis", "rows", "search", "filters", "openOnly", "ruleList", "ruleCount",
+  ["file", "srcInfo", "kpis", "rows", "search", "filters", "openOnly", "grouped", "ruleList", "ruleCount",
    "editor", "editHint", "editTitle", "e_id", "e_title", "e_type", "e_level",
    "e_attack", "e_tactic", "e_params", "e_err", "e_effect", "drawer"]
     .forEach(id => els[id] = document.getElementById(id));
@@ -124,9 +125,10 @@
   function renderAlerts() {
     const q = (els.search.value || "").toLowerCase();
     const sevs = Array.from(document.querySelectorAll(".sevf:checked")).map(c => c.value);
-    const openOnly = els.openOnly.checked;
+    const openOnly = els.openOnly.checked, grouped = els.grouped.checked;
     if (!state.alerts.length) { els.rows.innerHTML = emptyRow("Charge une source pour lancer la détection."); return; }
     const rows = state.alerts.filter(a => {
+      if (grouped && a.grouped_in) return false;   // repliée sous son incident
       if (sevs.indexOf(sev(a.severity)) < 0) return false;
       if (openOnly) { const s = irOf(a).status; if (s === "resolu" || s === "fauxpositif") return false; }
       if (q) { const hay = [a.rule_id, a.title, a.source_ip, a.user, a.attack].join(" ").toLowerCase();
@@ -138,11 +140,22 @@
       return `<tr data-action="open" data-idx="${state.alerts.indexOf(a)}" tabindex="0">
         <td><span class="sev ${s}">${s}</span></td>
         <td><span class="st ${st.cls}">${esc(st.label)}</span></td>
-        <td>${esc(a.title)}${a.threat ? ` <span class="cti">connu</span>` : ""}</td>
+        <td>${esc(a.title)}${a.threat ? ` <span class="cti">connu</span>` : ""}${
+          isIncident(a) ? `<br><span class="grp">incident · ${num(a.count)} détections regroupées</span>` :
+          a.grouped_in ? `<br><span class="meta">↳ dans l'incident ${esc(a.grouped_in)}</span>` : ""}</td>
         <td>${a.source_ip ? `<code>${esc(a.source_ip)}</code>` : "-"}${a.country ? `<br><span class="meta">${esc(a.country)}</span>` : ""}</td>
         <td>${esc(a.user) || "-"}</td><td>${num(a.count)}</td>
         <td><span class="att">${esc(a.attack)}</span></td></tr>`;
     }).join("") : emptyRow("Aucune alerte pour ces filtres.");
+  }
+
+  // --- Incidents corrélés ------------------------------------------------
+  const CORRELATIONS = () => new Set(state.rules.filter(r => r.type === "correlation").map(r => r.id));
+  function isIncident(a) { return CORRELATIONS().has(a.rule_id); }
+  function membersOf(a) {
+    return state.alerts.filter(x => x.grouped_in === a.rule_id && x.host === a.host &&
+      +new Date(x.first_seen) >= +new Date(a.first_seen) && +new Date(x.first_seen) <= +new Date(a.last_seen))
+      .sort((x, y) => new Date(x.first_seen) - new Date(y.first_seen));
   }
 
   // --- Investigation + réponse à incident (drawer) ------------------------
@@ -190,6 +203,14 @@
         <textarea id="ir_notes" rows="3" placeholder="Notes d'investigation..." aria-label="Notes">${esc(rec.notes)}</textarea>
         <div class="row mt8"><button class="primary" data-action="save-ir" data-idx="${num(idx)}">Enregistrer</button>
           <span class="meta" id="ir_saved"></span></div>
+
+        ${isIncident(a) ? `<h3>Détections regroupées dans cet incident (${membersOf(a).length})</h3>
+        <div class="tablewrap"><table><tbody>${membersOf(a).map(x =>
+          `<tr data-action="open" data-idx="${state.alerts.indexOf(x)}" tabindex="0">
+            <td class="meta">${esc(fmt(x.first_seen))}</td>
+            <td><span class="sev ${sev(x.severity)}">${sev(x.severity)}</span></td>
+            <td>${esc(x.title)}</td><td><span class="att">${esc(x.attack)}</span></td></tr>`).join("")}</tbody></table></div>` : ""}
+        ${a.grouped_in ? `<p class="meta">Cette détection fait partie de l'incident ${esc(a.grouped_in)}.</p>` : ""}
 
         <h3>Chaîne ATT&amp;CK de l'entité (${chain.length} alerte(s))</h3>
         <div class="tablewrap"><table><tbody>${chain.map(x =>
@@ -323,19 +344,35 @@
   function exportRules() { download("rules.json", JSON.stringify(state.rules, null, 2)); }
 
   // --- Chargement des sources --------------------------------------------
-  function analyzeText(text, label) {
-    state.events = M.parseText(text, 2026);
+  function analyzeEvents(events, label) {
+    state.events = events;
     state.srcLabel = label;
     els.srcInfo.textContent = `${label} — ${state.events.length} événements`;
     detect();
   }
+  function analyzeText(text, label) { analyzeEvents(M.parseText(text, 2026), label); }
+  // Fichier chargé : .evtx binaire (signature « ElfFile ») ou texte (journal, XML)
+  function analyzeBytes(bytes, label) {
+    try {
+      if (M.isEvtx(bytes)) analyzeEvents(M.parseEvtx(bytes), label + " (.evtx)");
+      else analyzeText(new TextDecoder("utf-8").decode(bytes), label);
+    } catch (e) {
+      els.srcInfo.textContent = `${label} : fichier illisible (${e.message})`;
+    }
+  }
+  function fromBase64(b64) {
+    const bin = atob(b64), out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
   function loadSample(key) {
     if (!SAMPLE_NAMES[key]) return;
-    analyzeText(window.MINISIEM_SAMPLES[key], SAMPLE_NAMES[key]);
+    if (key === "sysmon_evtx") analyzeBytes(fromBase64(window.MINISIEM_SAMPLES[key]), SAMPLE_NAMES[key]);
+    else analyzeText(window.MINISIEM_SAMPLES[key], SAMPLE_NAMES[key]);
   }
   function loadAll() {
     const s = window.MINISIEM_SAMPLES;
-    analyzeText(Object.keys(SAMPLE_NAMES).map(k => s[k]).join("\n"), "Toutes les sources");
+    analyzeText(["auth", "web", "fw", "win", "sysmon"].map(k => s[k]).join("\n"), "Toutes les sources");
   }
 
   // --- Navigation ---------------------------------------------------------
@@ -379,7 +416,9 @@
   els.filters.addEventListener("change", renderAlerts);
   els.file.addEventListener("change", e => {
     const f = e.target.files[0]; if (!f) return;
-    const r = new FileReader(); r.onload = () => analyzeText(String(r.result), f.name); r.readAsText(f);
+    const r = new FileReader();
+    r.onload = () => analyzeBytes(new Uint8Array(r.result), f.name);
+    r.readAsArrayBuffer(f);
   });
 
   renderRuleList();
