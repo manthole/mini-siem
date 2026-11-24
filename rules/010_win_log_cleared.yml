@@ -2,8 +2,8 @@ id: WIN_LOG_CLEARED
 title: Journal de sécurité Windows effacé
 type: match
 level: high
-attack: T1070.001
-tactic: Defense Evasion
+attack: T1685.005
+tactic: Defense Impairment
 description: >
   Le journal de sécurité a été effacé (Event ID 1102). Technique anti-forensic
   classique pour masquer une activité malveillante après coup.

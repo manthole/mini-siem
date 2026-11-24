@@ -3,75 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+<meta name="referrer" content="no-referrer">
 <title>mini-SIEM — console SOC</title>
-<style>
-  :root { --bg:#0f1116; --card:#171a21; --card2:#1c2029; --line:#272b36; --txt:#e6e8ee;
-          --muted:#9aa0ad; --accent:#378add; --crit:#e24b4a; --high:#ef9f27;
-          --medium:#378add; --low:#5dcaa5; --ok:#5dcaa5; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--txt);
-         font:14.5px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-  .wrap { max-width:1080px; margin:0 auto; padding:24px 20px 72px; }
-  h1 { font-size:22px; margin:0 0 2px; font-weight:600; }
-  .sub { color:var(--muted); margin:0 0 18px; font-size:13px; }
-  a { color:var(--accent); }
-  button { background:var(--card); color:var(--txt); border:1px solid var(--line);
-           border-radius:8px; padding:7px 13px; font-size:13.5px; cursor:pointer; }
-  button:hover { border-color:var(--accent); }
-  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-  button.danger { color:var(--crit); border-color:rgba(226,75,74,.4); }
-  input, select, textarea { background:#0b0d12; color:var(--txt); border:1px solid var(--line);
-           border-radius:7px; padding:7px 9px; font-size:13.5px; font-family:inherit; }
-  textarea { width:100%; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; }
-  .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-         background:var(--card); border:1px solid var(--line); border-radius:12px;
-         padding:12px 14px; margin-bottom:16px; }
-  .tabs { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
-  .tab { padding:8px 16px; border-radius:8px; border:1px solid var(--line); background:var(--card);
-         cursor:pointer; font-size:13.5px; color:var(--muted); }
-  .tab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
-  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
-  .cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
-  .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; min-width:92px; flex:1; }
-  .kpi .n { font-size:24px; font-weight:600; } .kpi .l { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; }
-  table { width:100%; border-collapse:collapse; }
-  th,td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; }
-  tbody tr { cursor:pointer; }
-  tbody tr:hover { background:var(--card2); }
-  .sev { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; white-space:nowrap; }
-  .sev.critical{ background:rgba(226,75,74,.15); color:var(--crit); }
-  .sev.high{ background:rgba(239,159,39,.15); color:var(--high); }
-  .sev.medium{ background:rgba(55,138,221,.15); color:var(--medium); }
-  .sev.low{ background:rgba(93,202,165,.15); color:var(--low); }
-  .st { display:inline-block; padding:2px 9px; border-radius:6px; font-size:11.5px; border:1px solid var(--line); color:var(--muted); }
-  .st.encours { color:var(--high); border-color:rgba(239,159,39,.4); }
-  .st.contenu { color:var(--medium); border-color:rgba(55,138,221,.4); }
-  .st.resolu { color:var(--ok); border-color:rgba(93,202,165,.4); }
-  .st.fauxpositif { color:var(--muted); text-decoration:line-through; }
-  code { background:#0b0d12; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:12px; color:#cdd3e0; }
-  .att { font-family:ui-monospace,Menlo,monospace; color:var(--accent); font-size:12px; }
-  .cti { display:inline-block; padding:1px 7px; border-radius:6px; font-size:11px;
-         background:rgba(226,75,74,.12); color:#e24b4a; border:1px solid rgba(226,75,74,.3); }
-  pre { background:#0b0d12; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto;
-        font-size:12px; color:#b9c0d0; margin:6px 0 0; white-space:pre-wrap; }
-  .hidden { display:none; }
-  .drawer-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; justify-content:flex-end; z-index:20; }
-  .drawer { width:min(620px,100%); height:100%; overflow:auto; background:var(--bg);
-            border-left:1px solid var(--line); padding:22px 24px; }
-  .drawer h2 { font-size:18px; margin:0 0 4px; } .drawer h3 { font-size:14px; margin:22px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
-  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
-  .chk { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13.5px; }
-  .meta { color:var(--muted); font-size:12.5px; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .rulecard { padding:10px 12px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; cursor:pointer; }
-  .rulecard:hover { border-color:var(--accent); }
-  .rulecard.sel { border-color:var(--accent); background:var(--card2); }
-  label.fld { display:block; font-size:12px; color:var(--muted); margin:10px 0 3px; }
-  .err { color:var(--crit); font-size:12.5px; margin-top:6px; }
-  .foot { color:var(--muted); font-size:12px; margin-top:36px; border-top:1px solid var(--line); padding-top:14px; }
-  .close { float:right; cursor:pointer; color:var(--muted); font-size:20px; line-height:1; }
-</style>
+<link rel="stylesheet" href="console.css">
 </head>
 <body>
 <div class="wrap">
@@ -81,39 +16,41 @@
      personnalisées sont conservés localement (localStorage).</p>
 
   <div class="bar">
-    <b style="font-size:13px">Source :</b>
-    <button class="primary" onclick="els.file.click()">Charger un fichier</button>
+    <b class="lbl">Source :</b>
+    <button class="primary" data-action="pick-file">Charger un fichier</button>
     <input type="file" id="file" class="hidden">
-    <button onclick="App.loadSample('auth')">Exemple SSH</button>
-    <button onclick="App.loadSample('web')">Exemple web</button>
-    <button onclick="App.loadSample('win')">Exemple Windows</button>
-    <button onclick="App.loadAll()">Tout charger</button>
-    <span class="meta" id="srcInfo" style="margin-left:auto"></span>
+    <button data-action="sample" data-sample="auth">Exemple SSH</button>
+    <button data-action="sample" data-sample="web">Exemple web</button>
+    <button data-action="sample" data-sample="fw">Exemple pare-feu</button>
+    <button data-action="sample" data-sample="win">Exemple Windows</button>
+    <button data-action="sample" data-sample="sysmon">Exemple Sysmon</button>
+    <button data-action="load-all">Tout charger</button>
+    <span class="meta push" id="srcInfo"></span>
   </div>
 
   <div class="tabs">
-    <div class="tab active" data-tab="detect" onclick="App.tab('detect')">Détection</div>
-    <div class="tab" data-tab="rules" onclick="App.tab('rules')">Règles</div>
-    <button style="margin-left:auto" onclick="App.exportIncident()">Exporter le rapport d'incident</button>
+    <button class="tab active" data-action="tab" data-tab="detect">Détection</button>
+    <button class="tab" data-action="tab" data-tab="rules">Règles</button>
+    <button class="push" data-action="export-incident">Exporter le rapport d'incident</button>
   </div>
 
   <!-- DÉTECTION -->
   <div id="tab-detect">
     <div class="cards" id="kpis"></div>
-    <div class="panel" style="margin-bottom:14px">
-      <div class="row" style="margin:0">
-        <input id="search" placeholder="Filtrer (IP, compte, règle, ATT&CK...)" style="flex:1; min-width:180px" oninput="App.renderAlerts()">
-        <label class="chk"><input type="checkbox" class="sevf" value="critical" checked onchange="App.renderAlerts()"> critical</label>
-        <label class="chk"><input type="checkbox" class="sevf" value="high" checked onchange="App.renderAlerts()"> high</label>
-        <label class="chk"><input type="checkbox" class="sevf" value="medium" checked onchange="App.renderAlerts()"> medium</label>
-        <label class="chk"><input type="checkbox" class="sevf" value="low" checked onchange="App.renderAlerts()"> low</label>
-        <label class="chk"><input type="checkbox" id="openOnly" onchange="App.renderAlerts()"> non résolues</label>
+    <div class="panel mb">
+      <div class="row m0" id="filters">
+        <input id="search" placeholder="Filtrer (IP, compte, règle, ATT&amp;CK...)">
+        <label class="chk"><input type="checkbox" class="sevf" value="critical" checked> critical</label>
+        <label class="chk"><input type="checkbox" class="sevf" value="high" checked> high</label>
+        <label class="chk"><input type="checkbox" class="sevf" value="medium" checked> medium</label>
+        <label class="chk"><input type="checkbox" class="sevf" value="low" checked> low</label>
+        <label class="chk"><input type="checkbox" id="openOnly"> non résolues</label>
       </div>
     </div>
-    <div class="panel" style="padding:4px 18px">
+    <div class="panel tight tablewrap">
       <table><thead><tr><th>Sévérité</th><th>Statut</th><th>Règle</th><th>Source</th>
         <th>Compte</th><th>Occur.</th><th>ATT&amp;CK</th></tr></thead>
-        <tbody id="rows"><tr><td colspan="7" class="meta" style="padding:20px">Charge une source pour lancer la détection.</td></tr></tbody></table>
+        <tbody id="rows"><tr><td colspan="7" class="meta empty">Charge une source pour lancer la détection.</td></tr></tbody></table>
     </div>
   </div>
 
@@ -121,47 +58,47 @@
   <div id="tab-rules" class="hidden">
     <div class="grid2">
       <div class="panel">
-        <div class="row" style="justify-content:space-between">
+        <div class="row between">
           <b>Règles (<span id="ruleCount">0</span>)</b>
-          <span><button onclick="App.newRule()">+ Nouvelle</button>
-            <button onclick="App.resetRules()">Réinitialiser</button></span>
+          <span><button data-action="new-rule">+ Nouvelle</button>
+            <button data-action="reset-rules">Réinitialiser</button></span>
         </div>
-        <div id="ruleList" style="margin-top:10px; max-height:460px; overflow:auto"></div>
-        <button onclick="App.exportRules()" style="margin-top:10px">Exporter les règles (JSON)</button>
+        <div id="ruleList"></div>
+        <button class="mt10" data-action="export-rules">Exporter les règles (JSON)</button>
       </div>
       <div class="panel">
         <b id="editTitle">Éditeur</b>
         <div id="editor" class="hidden">
-          <label class="fld">id</label><input id="e_id" style="width:100%">
-          <label class="fld">titre</label><input id="e_title" style="width:100%">
-          <div class="row" style="margin-top:4px">
-            <div style="flex:1"><label class="fld">type</label>
-              <select id="e_type" style="width:100%">
+          <label class="fld" for="e_id">id</label><input id="e_id" class="w100">
+          <label class="fld" for="e_title">titre</label><input id="e_title" class="w100">
+          <div class="row mt4">
+            <div class="grow"><label class="fld" for="e_type">type</label>
+              <select id="e_type" class="w100">
                 <option>match</option><option>threshold</option>
                 <option>sequence</option><option>baseline_hour</option></select></div>
-            <div style="flex:1"><label class="fld">sévérité</label>
-              <select id="e_level" style="width:100%">
+            <div class="grow"><label class="fld" for="e_level">sévérité</label>
+              <select id="e_level" class="w100">
                 <option>low</option><option>medium</option><option>high</option><option>critical</option></select></div>
           </div>
           <div class="row">
-            <div style="flex:1"><label class="fld">attack</label><input id="e_attack" style="width:100%"></div>
-            <div style="flex:1"><label class="fld">tactic</label><input id="e_tactic" style="width:100%"></div>
+            <div class="grow"><label class="fld" for="e_attack">attack</label><input id="e_attack" class="w100"></div>
+            <div class="grow"><label class="fld" for="e_tactic">tactic</label><input id="e_tactic" class="w100"></div>
           </div>
-          <label class="fld">paramètres (JSON : selection, group_by, window_seconds, count, distinct, precondition, trigger...)</label>
+          <label class="fld" for="e_params">paramètres (JSON : selection, filter, group_by, window_seconds, count, distinct, precondition, trigger...)</label>
           <textarea id="e_params" rows="9"></textarea>
           <div class="err hidden" id="e_err"></div>
-          <div class="row" style="margin-top:10px">
-            <button class="primary" onclick="App.saveRule()">Enregistrer et relancer</button>
-            <button class="danger" onclick="App.deleteRule()">Supprimer</button>
+          <div class="row mt10">
+            <button class="primary" data-action="save-rule">Enregistrer et relancer</button>
+            <button class="danger" data-action="delete-rule">Supprimer</button>
           </div>
-          <p class="meta" id="e_effect" style="margin-top:8px"></p>
+          <p class="meta mt8" id="e_effect"></p>
         </div>
         <p class="meta" id="editHint">Sélectionne une règle à gauche, ou crée-en une.</p>
       </div>
     </div>
   </div>
 
-  <div class="foot">mini-SIEM · console de démonstration. Données synthétiques. Moteur JS identique à la version Python.</div>
+  <div class="foot">mini-SIEM · console de démonstration. Données synthétiques. Moteur JS identique à la version Python (vérifié par les tests).</div>
 </div>
 
 <div id="drawer"></div>

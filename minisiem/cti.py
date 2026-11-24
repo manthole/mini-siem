@@ -5,7 +5,9 @@ Deux apports :
      reçoit un contexte (flux, catégorie, score de confiance) et peut voir sa
      sévérité relevée.
   2. Détection — une IP déjà référencée comme malveillante est signalée même si
-     aucune règle de volume ne s'est déclenchée (un simple contact suffit).
+     aucune règle de volume ne s'est déclenchée (un simple contact suffit), qu'elle
+     soit la source de l'événement ou sa destination (connexion sortante Sysmon
+     vers un serveur de commande, par exemple).
 
 Branchable comme le GeoIP : un flux de démo est embarqué (data/threat_feed.json),
 remplaçable par un vrai feed via la variable MINISIEM_CTI_FEED (JSON ou CSV).
@@ -87,8 +89,9 @@ class ThreatIntel:
 
     def match_event(self, ev: Event) -> list[dict]:
         hits = []
-        if ev.source_ip and ev.source_ip in self._ip:
-            hits.append(self._ip[ev.source_ip])
+        for ip in (ev.source_ip, ev.dest_ip):
+            if ip and ip in self._ip:
+                hits.append(self._ip[ip])
         if ev.user_agent:
             ua = ev.user_agent.lower()
             hits += [i for i in self._ua if str(i["value"]).lower() in ua]
@@ -123,8 +126,9 @@ def detect_threat_contacts(ti: ThreatIntel, events: list[Event],
     already = {a.source_ip for a in existing if a.source_ip}
     by_ip: dict[str, list[Event]] = {}
     for e in events:
-        if e.source_ip and e.source_ip in ti._ip and e.source_ip not in already:
-            by_ip.setdefault(e.source_ip, []).append(e)
+        for ip in dict.fromkeys((e.source_ip, e.dest_ip)):   # source puis destination
+            if ip and ip in ti._ip and ip not in already:
+                by_ip.setdefault(ip, []).append(e)
 
     alerts: list[Alert] = []
     for ip, evs in by_ip.items():

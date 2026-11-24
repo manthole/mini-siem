@@ -1,0 +1,22 @@
+id: SYSMON_PS_ENCODED
+title: PowerShell lancé avec une commande encodée
+type: match
+level: high
+attack: T1059.001
+tactic: Execution
+description: >
+  PowerShell reçoit son script en Base64 (-EncodedCommand ou l'une de ses
+  abréviations : -enc, -ec, -e…), suivi d'un bloc encodé (Sysmon 1). Les
+  administrateurs l'utilisent rarement ; les chargeurs malveillants, très
+  souvent, pour masquer la commande aux regards et aux filtres simples.
+selection:
+  event_type: process_creation
+  process:
+    endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+  command_line:
+    regex: '\s[-/]e(?:c|n(?:c(?:o(?:d(?:e(?:d(?:c(?:o(?:m(?:m(?:a(?:n(?:d)?)?)?)?)?)?)?)?)?)?)?)?)?\s+[A-Za-z0-9+/=]{20,}'
+group_by:
+  - host
+  - user

@@ -170,8 +170,8 @@
     "title": "Journal de sécurité Windows effacé",
     "type": "match",
     "level": "high",
-    "attack": "T1070.001",
-    "tactic": "Defense Evasion",
+    "attack": "T1685.005",
+    "tactic": "Defense Impairment",
     "description": "Le journal de sécurité a été effacé (Event ID 1102). Technique anti-forensic classique pour masquer une activité malveillante après coup.\n",
     "selection": {
       "event_id": 1102
@@ -241,6 +241,174 @@
         "regex": "(?:\\$\\{jndi:(?:ldap|ldaps|rmi|dns)|%24%7bjndi)"
       }
     }
+  },
+  {
+    "id": "SYSMON_OFFICE_SHELL",
+    "title": "Application Office qui lance un interpréteur de commandes",
+    "type": "match",
+    "level": "high",
+    "attack": "T1204.002",
+    "tactic": "Execution",
+    "description": "Word, Excel, PowerPoint ou Outlook démarre un shell, PowerShell ou un binaire système détourné (Sysmon 1). C'est la signature d'un document piégé : la macro lance la suite de l'attaque. Un processus enfant légitime d'Office (impression avec splwow64.exe, par exemple) ne déclenche rien.\n",
+    "selection": {
+      "event_type": "process_creation",
+      "parent_process": {
+        "endswith": [
+          "\\winword.exe",
+          "\\excel.exe",
+          "\\powerpnt.exe",
+          "\\outlook.exe",
+          "\\msaccess.exe",
+          "\\mspub.exe"
+        ]
+      },
+      "process": {
+        "endswith": [
+          "\\cmd.exe",
+          "\\powershell.exe",
+          "\\pwsh.exe",
+          "\\wscript.exe",
+          "\\cscript.exe",
+          "\\mshta.exe",
+          "\\rundll32.exe",
+          "\\regsvr32.exe",
+          "\\certutil.exe",
+          "\\bitsadmin.exe"
+        ]
+      }
+    },
+    "group_by": [
+      "host",
+      "user"
+    ]
+  },
+  {
+    "id": "SYSMON_PS_ENCODED",
+    "title": "PowerShell lancé avec une commande encodée",
+    "type": "match",
+    "level": "high",
+    "attack": "T1059.001",
+    "tactic": "Execution",
+    "description": "PowerShell reçoit son script en Base64 (-EncodedCommand ou l'une de ses abréviations : -enc, -ec, -e…), suivi d'un bloc encodé (Sysmon 1). Les administrateurs l'utilisent rarement ; les chargeurs malveillants, très souvent, pour masquer la commande aux regards et aux filtres simples.\n",
+    "selection": {
+      "event_type": "process_creation",
+      "process": {
+        "endswith": [
+          "\\powershell.exe",
+          "\\pwsh.exe"
+        ]
+      },
+      "command_line": {
+        "regex": "\\s[-/]e(?:c|n(?:c(?:o(?:d(?:e(?:d(?:c(?:o(?:m(?:m(?:a(?:n(?:d)?)?)?)?)?)?)?)?)?)?)?)?)?\\s+[A-Za-z0-9+/=]{20,}"
+      }
+    },
+    "group_by": [
+      "host",
+      "user"
+    ]
+  },
+  {
+    "id": "SYSMON_LOLBIN_DOWNLOAD",
+    "title": "Téléchargement par un binaire Windows détourné",
+    "type": "match",
+    "level": "high",
+    "attack": "T1105",
+    "tactic": "Command and Control",
+    "description": "certutil (-urlcache) ou bitsadmin (/transfer) sert à télécharger un fichier (Sysmon 1). Ces outils sont signés par Microsoft et présents partout, d'où leur usage pour récupérer une charge sans apporter son propre outil (« living off the land »). Le simple calcul d'empreinte (certutil -hashfile) ne déclenche rien.\n",
+    "selection": {
+      "event_type": "process_creation",
+      "command_line": {
+        "regex": "(?:certutil(?:\\.exe)?\\s.*[-/](?:urlcache|verifyctl)|bitsadmin(?:\\.exe)?\\s.*/transfer)"
+      }
+    },
+    "group_by": [
+      "host",
+      "user"
+    ]
+  },
+  {
+    "id": "SYSMON_LSASS_ACCESS",
+    "title": "Accès mémoire suspect au processus LSASS",
+    "type": "match",
+    "level": "critical",
+    "attack": "T1003.001",
+    "tactic": "Credential Access",
+    "description": "Un processus ouvre lsass.exe avec des droits de lecture mémoire (Sysmon 10, GrantedAccess 0x1010, 0x1410, 0x1fffff…). LSASS garde les secrets des sessions ouvertes : c'est ce que fait un outil de vol d'identifiants (type Mimikatz) ou un dump mémoire. L'antivirus et les processus système qui y accèdent légitimement sont écartés par le filtre.\n",
+    "selection": {
+      "event_type": "process_access",
+      "target": {
+        "endswith": "\\lsass.exe"
+      },
+      "granted_access": {
+        "in": [
+          "0x1010",
+          "0x1410",
+          "0x1438",
+          "0x143a",
+          "0x1f0fff",
+          "0x1f1fff",
+          "0x1f3fff",
+          "0x1fffff"
+        ]
+      }
+    },
+    "filter": {
+      "process": {
+        "endswith": [
+          "\\MsMpEng.exe",
+          "\\MsSense.exe",
+          "\\wininit.exe",
+          "\\csrss.exe"
+        ]
+      }
+    },
+    "group_by": [
+      "host",
+      "process"
+    ]
+  },
+  {
+    "id": "SYSMON_RUN_KEY",
+    "title": "Persistance par une clé de registre Run",
+    "type": "match",
+    "level": "medium",
+    "attack": "T1547.001",
+    "tactic": "Persistence",
+    "description": "Une valeur est écrite sous une clé Run ou RunOnce (Sysmon 13) : le programme indiqué se relancera à chaque ouverture de session. C'est la persistance la plus courante sous Windows ; un installeur légitime le fait aussi, d'où une sévérité moyenne et le contrôle de la valeur écrite.\n",
+    "selection": {
+      "event_type": "registry_set",
+      "target": {
+        "contains": "\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+      }
+    },
+    "group_by": [
+      "host",
+      "process"
+    ]
+  },
+  {
+    "id": "SYSMON_LOLBIN_NETWORK",
+    "title": "Connexion réseau d'un binaire système détourné",
+    "type": "match",
+    "level": "high",
+    "attack": "T1218",
+    "tactic": "Stealth",
+    "description": "rundll32, regsvr32 ou mshta ouvre une connexion réseau (Sysmon 3). Ces binaires servent à exécuter du code sous couvert d'un programme signé ; qu'ils parlent au réseau évoque une charge chargée en mémoire qui contacte son serveur de commande (C2). Des connexions répétées vers la même adresse ressemblent à une balise.\n",
+    "selection": {
+      "event_type": "network_connection",
+      "process": {
+        "endswith": [
+          "\\rundll32.exe",
+          "\\regsvr32.exe",
+          "\\mshta.exe"
+        ]
+      }
+    },
+    "group_by": [
+      "host",
+      "process",
+      "dest_ip"
+    ]
   }
 ];
   if (typeof module !== 'undefined' && module.exports) module.exports = root.MINISIEM_RULES;

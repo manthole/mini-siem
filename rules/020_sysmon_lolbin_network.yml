@@ -1,0 +1,23 @@
+id: SYSMON_LOLBIN_NETWORK
+title: Connexion réseau d'un binaire système détourné
+type: match
+level: high
+attack: T1218
+tactic: Stealth
+description: >
+  rundll32, regsvr32 ou mshta ouvre une connexion réseau (Sysmon 3). Ces
+  binaires servent à exécuter du code sous couvert d'un programme signé ;
+  qu'ils parlent au réseau évoque une charge chargée en mémoire qui contacte
+  son serveur de commande (C2). Des connexions répétées vers la même adresse
+  ressemblent à une balise.
+selection:
+  event_type: network_connection
+  process:
+    endswith:
+      - '\rundll32.exe'
+      - '\regsvr32.exe'
+      - '\mshta.exe'
+group_by:
+  - host
+  - process
+  - dest_ip

@@ -1,0 +1,19 @@
+id: SYSMON_LOLBIN_DOWNLOAD
+title: Téléchargement par un binaire Windows détourné
+type: match
+level: high
+attack: T1105
+tactic: Command and Control
+description: >
+  certutil (-urlcache) ou bitsadmin (/transfer) sert à télécharger un fichier
+  (Sysmon 1). Ces outils sont signés par Microsoft et présents partout, d'où
+  leur usage pour récupérer une charge sans apporter son propre outil
+  (« living off the land »). Le simple calcul d'empreinte (certutil -hashfile)
+  ne déclenche rien.
+selection:
+  event_type: process_creation
+  command_line:
+    regex: '(?:certutil(?:\.exe)?\s.*[-/](?:urlcache|verifyctl)|bitsadmin(?:\.exe)?\s.*/transfer)'
+group_by:
+  - host
+  - user

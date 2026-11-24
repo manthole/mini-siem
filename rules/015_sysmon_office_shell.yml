@@ -1,0 +1,36 @@
+id: SYSMON_OFFICE_SHELL
+title: Application Office qui lance un interpréteur de commandes
+type: match
+level: high
+attack: T1204.002
+tactic: Execution
+description: >
+  Word, Excel, PowerPoint ou Outlook démarre un shell, PowerShell ou un binaire
+  système détourné (Sysmon 1). C'est la signature d'un document piégé : la
+  macro lance la suite de l'attaque. Un processus enfant légitime d'Office
+  (impression avec splwow64.exe, par exemple) ne déclenche rien.
+selection:
+  event_type: process_creation
+  parent_process:
+    endswith:
+      - '\winword.exe'
+      - '\excel.exe'
+      - '\powerpnt.exe'
+      - '\outlook.exe'
+      - '\msaccess.exe'
+      - '\mspub.exe'
+  process:
+    endswith:
+      - '\cmd.exe'
+      - '\powershell.exe'
+      - '\pwsh.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\mshta.exe'
+      - '\rundll32.exe'
+      - '\regsvr32.exe'
+      - '\certutil.exe'
+      - '\bitsadmin.exe'
+group_by:
+  - host
+  - user
