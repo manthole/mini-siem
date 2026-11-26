@@ -49,8 +49,20 @@ _FIXED = {T_INT8: 1, T_UINT8: 1, T_INT16: 2, T_UINT16: 2, T_INT32: 4, T_UINT32: 
           T_FILETIME: 8, T_SYSTIME: 16, T_HEX32: 4, T_HEX64: 8}
 
 _EPOCH = datetime(1601, 1, 1)
+_MAX_FT_SECONDS = 265_046_774_399     # 9999-12-31T23:59:59 : au-delà, date invalide
 # caractères interdits en XML 1.0 (un journal corrompu ne doit pas casser l'analyse)
 _BAD_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+_BAD_NAME = re.compile(r"[^A-Za-z0-9_.:-]")
+_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
+
+# Limites par enregistrement. Un fichier .evtx peut venir de n'importe qui : des fragments
+# imbriqués qui se référencent en cascade feraient exploser le temps de lecture et la
+# mémoire (chaque niveau double le travail, comme une « bombe XML »). Les vrais journaux
+# Windows restent très loin de ces seuils ; un enregistrement qui les dépasse est ignoré
+# comme un enregistrement abîmé. Mêmes valeurs dans la version JavaScript.
+MAX_DEPTH = 64            # imbrication d'éléments et de fragments
+MAX_WORK = 100_000        # éléments, fragments et valeurs traités
+MAX_OUTPUT = 1 << 20      # caractères de XML produits
 
 
 class EvtxError(ValueError):
@@ -69,8 +81,16 @@ def _xml_attr(s: str) -> str:
     return _xml_text(s).replace('"', "&quot;")
 
 
+def _xml_name(s: str) -> str:
+    """Nom d'élément ou d'attribut toujours valide, même lu dans un fichier corrompu."""
+    s = _BAD_NAME.sub("_", s)
+    return s if s[:1].isascii() and (s[:1].isalpha() or s[:1] == "_") else "_" + s
+
+
 def filetime(ticks: int) -> str:
     """FILETIME (centaines de ns depuis 1601) -> « 2026-11-08T14:05:31.1234567Z »."""
+    if ticks // 10_000_000 > _MAX_FT_SECONDS:
+        raise EvtxError("date hors limites")
     dt = _EPOCH + timedelta(seconds=ticks // 10_000_000)
     return f"{dt:%Y-%m-%dT%H:%M:%S}.{ticks % 10_000_000:07d}Z"
 
@@ -87,6 +107,28 @@ class _Chunk:
         self.b = buf
         self.names: dict[int, tuple[str, int]] = {}
         self.templates: dict[int, list] = {}
+        self.depth = self.work = self.out_len = 0
+
+    # --- garde-fous (voir MAX_DEPTH, MAX_WORK, MAX_OUTPUT)
+    def enter(self) -> None:
+        self.depth += 1
+        self.spend()
+        if self.depth > MAX_DEPTH:
+            raise EvtxError("imbrication trop profonde")
+
+    def leave(self) -> None:
+        self.depth -= 1
+
+    def spend(self) -> None:
+        self.work += 1
+        if self.work > MAX_WORK:
+            raise EvtxError("enregistrement trop complexe")
+
+    def emit(self, out: list[str], text: str) -> None:
+        self.out_len += len(text)
+        if self.out_len > MAX_OUTPUT:
+            raise EvtxError("enregistrement trop volumineux")
+        out.append(text)
 
     # --- primitives
     def u16(self, p: int) -> int:
@@ -114,20 +156,32 @@ class _Chunk:
             magic, size = struct.unpack_from("<II", self.b, pos)
             if magic != RECORD_MAGIC or size < 28 or pos + size > len(self.b):
                 break
+            self.depth = self.work = self.out_len = 0
             try:
                 yield self.render_fragment(pos + 24)
-            except (EvtxError, struct.error, IndexError, RecursionError):
-                pass  # enregistrement abîmé : on passe au suivant
+            except (EvtxError, struct.error, IndexError, RecursionError, ValueError, OverflowError):
+                pass  # enregistrement abîmé ou hostile : on passe au suivant
             pos += size
 
     def render_fragment(self, pos: int) -> str:
-        nodes, _ = self.fragment(pos)
-        out: list[str] = []
-        self.render(nodes, [], out)
-        return "".join(out)
+        self.enter()
+        try:
+            nodes, _ = self.fragment(pos)
+            out: list[str] = []
+            self.render(nodes, [], out)
+            return "".join(out)
+        finally:
+            self.leave()
 
     # --- analyse du XML binaire
     def fragment(self, pos: int) -> tuple[list, int]:
+        self.enter()
+        try:
+            return self._fragment(pos)
+        finally:
+            self.leave()
+
+    def _fragment(self, pos: int) -> tuple[list, int]:
         nodes: list = []
         while True:
             tok = self.b[pos]
@@ -146,6 +200,13 @@ class _Chunk:
                 raise EvtxError(f"jeton inattendu {tok:#04x} à {pos:#x}")
 
     def element(self, pos: int) -> tuple[tuple, int]:
+        self.enter()
+        try:
+            return self._element(pos)
+        finally:
+            self.leave()
+
+    def _element(self, pos: int) -> tuple[tuple, int]:
         has_attrs = self.b[pos] & 0x40
         pos += 3                                     # jeton + identifiant de dépendance
         pos += 4                                     # taille des données (non nécessaire)
@@ -197,23 +258,19 @@ class _Chunk:
                 out.append(("subst", self.u16(pos + 1), tok == 0x0E))
                 pos += 4
             elif base == 0x08:                       # &#N;
-                out.append(("raw", f"&#{self.u16(pos + 1)};"))
+                out.append(("text", _char(self.u16(pos + 1))))
                 pos += 3
             elif base == 0x09:                       # &nom;
                 ename, pos = self.name(self.u32(pos + 1), pos + 5)
-                out.append(("raw", f"&{ename};"))
+                out.append(("raw", f"&{ename};") if ename in _ENTITIES else ("text", f"&{ename};"))
             elif base == 0x07:                       # CDATA
                 n = self.u16(pos + 1)
                 out.append(("text", self.utf16(pos + 3, n)))
                 pos += 3 + 2 * n
-            elif tok == 0x0A:                        # instruction de traitement
-                target, pos = self.name(self.u32(pos + 1), pos + 5)
-                data = ""
+            elif tok == 0x0A:                        # instruction de traitement : ignorée
+                _, pos = self.name(self.u32(pos + 1), pos + 5)
                 if self.b[pos] == 0x0B:
-                    n = self.u16(pos + 1)
-                    data = self.utf16(pos + 3, n)
-                    pos += 3 + 2 * n
-                out.append(("raw", f"<?{target} {data}?>"))
+                    pos += 3 + 2 * self.u16(pos + 1)
             else:
                 if not out:
                     raise EvtxError(f"valeur attendue à {pos:#x} (jeton {tok:#04x})")
@@ -241,30 +298,40 @@ class _Chunk:
     # --- rendu en XML texte
     def render(self, nodes: list, values: list, out: list[str]) -> None:
         for node in nodes:
+            self.spend()
             kind = node[0]
             if kind == "tmpl":
                 self.render(node[1], node[2], out)
             elif kind == "elem":
                 _, name, attrs, children = node
-                out.append("<" + name)
+                name = _xml_name(name)
+                self.emit(out, "<" + name)
+                seen = set()
                 for aname, content in attrs:
+                    aname = _xml_name(aname)
                     text = self.text_of(content, values)
-                    if text is not None:
-                        out.append(f' {aname}="{_xml_attr(text)}"')
+                    if text is not None and aname not in seen:
+                        seen.add(aname)
+                        self.emit(out, f' {aname}="{_xml_attr(text)}"')
                 if children is None:
-                    out.append("/>")
+                    self.emit(out, "/>")
                     continue
-                out.append(">")
-                for child in children:
-                    if child[0] in ("elem", "tmpl"):
-                        self.render([child], values, out)
-                    elif child[0] == "subst":
-                        out.append(self.value_xml(values, child[1]))
-                    elif child[0] == "raw":
-                        out.append(child[1])
-                    else:
-                        out.append(_xml_text(child[1]))
-                out.append(f"</{name}>")
+                self.emit(out, ">")
+                self.enter()
+                try:
+                    for child in children:
+                        if child[0] in ("elem", "tmpl"):
+                            self.render([child], values, out)
+                        elif child[0] == "subst":
+                            self.spend()
+                            self.emit(out, self.value_xml(values, child[1]))
+                        elif child[0] == "raw":
+                            self.emit(out, child[1])
+                        else:
+                            self.emit(out, _xml_text(child[1]))
+                finally:
+                    self.leave()
+                self.emit(out, f"</{name}>")
 
     def text_of(self, content: list, values: list) -> str | None:
         """Texte d'un attribut. None si sa seule valeur est une substitution optionnelle
@@ -297,9 +364,29 @@ class _Chunk:
         if vtype == T_NULL or size == 0:
             return None
         raw = self.b[pos:pos + size]
+        if len(raw) < size:
+            raise EvtxError("valeur tronquée")
+        if not vtype & 0x80 and size < _FIXED.get(vtype, 0):
+            raise EvtxError("valeur trop courte pour son type")
         if vtype & 0x80:                             # tableau de valeurs
             return ", ".join(_scalar(vtype & 0x7F, part) for part in _split_array(vtype & 0x7F, raw))
         return _scalar(vtype, raw)
+
+
+def _real(v: float) -> str:
+    """Réel en 6 chiffres significatifs (« %g »), même écriture en JavaScript."""
+    if v != v:
+        return "nan"
+    if v in (float("inf"), float("-inf")):
+        return "inf" if v > 0 else "-inf"
+    return f"{v:.6g}"
+
+
+def _char(n: int) -> str:
+    """Référence de caractère : rendue telle quelle si elle désigne un caractère XML valide."""
+    if n in (0x9, 0xA, 0xD) or 0x20 <= n <= 0xD7FF or 0xE000 <= n <= 0xFFFD:
+        return chr(n)
+    return ""
 
 
 def _split_array(vtype: int, raw: bytes) -> list[bytes]:
@@ -329,9 +416,9 @@ def _scalar(vtype: int, raw: bytes) -> str:
     if vtype == T_BOOL:
         return "true" if struct.unpack("<I", raw[:4])[0] else "false"
     if vtype == T_REAL32:
-        return repr(struct.unpack("<f", raw[:4])[0])
+        return _real(struct.unpack("<f", raw[:4])[0])
     if vtype == T_REAL64:
-        return repr(struct.unpack("<d", raw[:8])[0])
+        return _real(struct.unpack("<d", raw[:8])[0])
     if vtype == T_FILETIME:
         return filetime(struct.unpack("<Q", raw[:8])[0])
     if vtype == T_SYSTIME:
@@ -341,6 +428,8 @@ def _scalar(vtype: int, raw: bytes) -> str:
         d1, d2, d3 = struct.unpack("<IHH", raw[:8])
         return f"{{{d1:08X}-{d2:04X}-{d3:04X}-{raw[8:10].hex().upper()}-{raw[10:16].hex().upper()}}}"
     if vtype == T_SID:
+        if len(raw) < 8 or len(raw) < 8 + 4 * raw[1]:
+            raise EvtxError("SID tronqué")
         rev, count = raw[0], raw[1]
         auth = int.from_bytes(raw[2:8], "big")
         subs = struct.unpack(f"<{count}I", raw[8:8 + 4 * count])

@@ -1,6 +1,7 @@
 # Tests à chaque publication : moteur Python, moteur JavaScript de la console,
-# parité entre les deux, fichiers générés à jour, et règles exportées au format
-# Sigma passées au validateur officiel.
+# parité entre les deux, fichiers générés à jour, règles exportées au format
+# Sigma passées au validateur officiel, campagne de fuzzing, et couverture
+# mesurée sur de vraies attaques (EVTX-ATTACK-SAMPLES).
 # Actions épinglées par empreinte de commit : une étiquette déplacée ne peut pas injecter de code.
 name: tests
 
@@ -38,3 +39,49 @@ jobs:
         run: |
           python analyze.py --export-sigma sigma
           sigma check --fail-on-issues sigma
+
+  fuzz:
+    name: fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r requirements.txt pytest
+      - name: Fuzzing (20 000 fichiers .evtx et 20 000 lignes, Python et JavaScript)
+        # graine différente à chaque exécution ; elle est affichée pour reproduire un échec
+        env:
+          FUZZ_ITERATIONS: "20000"
+          FUZZ_SEED: ${{ github.run_id }}
+        run: |
+          echo "Pour reproduire : FUZZ_SEED=$FUZZ_SEED FUZZ_ITERATIONS=$FUZZ_ITERATIONS python -m pytest tests/test_fuzz.py"
+          python -m pytest -q tests/test_fuzz.py
+
+  couverture:
+    name: couverture (EVTX-ATTACK-SAMPLES)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r requirements.txt
+      - name: Mesure (téléchargement des seuls .evtx, version figée, hors du dépôt)
+        run: >
+          python attack_coverage.py --fetch "$RUNNER_TEMP/evtx-attack-samples"
+          --markdown COVERAGE.md --readme README.md --summary "$GITHUB_STEP_SUMMARY"
+      - name: COVERAGE.md et README à jour
+        run: |
+          if ! git diff --exit-code -- COVERAGE.md README.md; then
+            echo "::error::La couverture mesurée ne correspond plus à COVERAGE.md : relancer attack_coverage.py (voir README)."
+            exit 1
+          fi
