@@ -389,11 +389,42 @@ python -m http.server -d web     # puis ouvrir http://localhost:8000/console.htm
 Règles, logs d'exemple et flux CTI de la démo sont **générés** depuis `rules/`,
 `samples/` et `data/` : aucune duplication, une seule source de vérité.
 
+## Couverture mesurée sur de vraies attaques
+
+Annoncer « 22 règles » ne dit pas ce qui est détecté. Le jeu public
+[EVTX-ATTACK-SAMPLES](https://github.com/sbousseaden/EVTX-ATTACK-SAMPLES)
+(Samir Bousseaden) rassemble 278 journaux Windows enregistrés pendant de vraies
+techniques d'attaque, rangés par tactique ATT&CK. `attack_coverage.py` les passe
+tous dans mini-SIEM, et l'intégration continue le refait à chaque envoi :
+
+<!-- couverture:debut (généré par attack_coverage.py) -->
+| Enregistrements | Alerte | ✅ tactique attendue | ❌ manquées | ⚪ hors périmètre |
+|---:|---:|---:|---:|---:|
+| 278 | 32 (11,5 %) | 14 | 174 | 72 |
+
+Dans le périmètre de mini-SIEM (fichiers contenant des événements qu'il sait lire) : **32 sur 206 (15,5 %)**. Détail, méthode et limites : [COVERAGE.md](COVERAGE.md).
+<!-- couverture:fin -->
+
+Le tableau complet, par tactique et par enregistrement, avec les règles qui se
+déclenchent et les sources les plus présentes dans ce qui passe, est dans
+[COVERAGE.md](COVERAGE.md). Le chiffre est modeste et c'est voulu : il est
+mesuré, pas annoncé, et il montre ce qui reste à couvrir. Ce n'est pas un test
+à l'aveugle (ces enregistrements ont déjà servi à trouver des manques), d'où un
+usage de suivi plutôt que de score.
+
+Les enregistrements ne sont **pas** copiés dans ce dépôt (autre licence, et ce
+sont des traces d'attaques) : le script télécharge seulement les fichiers
+`.evtx`, à une version figée du dépôt d'origine.
+
+```bash
+python attack_coverage.py --fetch /tmp/evtx-attack-samples --markdown COVERAGE.md --readme README.md
+```
+
 ## Tests
 
 ```bash
 pip install -r requirements.txt pytest
-python -m pytest -q          # 77 tests : parsers, .evtx, règles, corrélation, CTI, exports, parité Python/JS
+python -m pytest -q          # 92 tests : parsers, .evtx, règles, corrélation, CTI, exports, parité Python/JS, fuzzing
 node web/demo.test.js        # 30 tests du moteur JavaScript
 ```
 
@@ -404,10 +435,51 @@ Un test de **parité** fait tourner les deux moteurs, Python et JavaScript, sur
 les journaux d'exemple (texte, XML et `.evtx`) et exige exactement les mêmes
 alertes.
 
+### Fuzzing
+
+Le lecteur `.evtx` et les parsers décodent des fichiers fournis par n'importe
+qui, en ligne de commande comme dans la console web. `tests/test_fuzz.py` leur
+envoie des variantes abîmées des échantillons (bits inversés, champs de taille
+ou de position réécrits, morceaux recopiés ailleurs, fichiers coupés, lignes de
+journal et exports XML cassés) et exige, pour chacune : aucun plantage, un temps
+borné, et **le même résultat octet pour octet en Python et en JavaScript**
+(fuzzing différentiel : si les deux lecteurs divergent, l'un des deux a un bug).
+Un générateur (`tests/evtx_craft.py`) fabrique aussi des enregistrements qui
+utilisent tous les types de valeurs du format, et des enregistrements hostiles.
+
+Ce que le fuzzing a trouvé, et qui est corrigé :
+
+- une **« bombe » XML binaire** : des fragments imbriqués qui se référencent
+  font exploser le rendu (temps exponentiel pour un fichier de quelques Ko).
+  Le lecteur refuse désormais un enregistrement trop imbriqué (64 niveaux),
+  trop complexe (100 000 nœuds) ou dont le rendu dépasse 1 Mo, dans les deux
+  moteurs ;
+- deux **retours arrière quadratiques** dans des expressions régulières (ligne
+  sudo, extraction des blocs `<Event>` jamais fermés) : 15 s pour une ligne
+  piégée, 1 ms maintenant ;
+- des plantages sur des valeurs tronquées, des dates impossibles (31 novembre,
+  25 h), des chiffres non ASCII (« ² » passe `isdigit()` mais pas `int()`), et
+  plusieurs divergences entre les deux moteurs (noms XML, caractères hors BMP,
+  nombres flottants, chaînes ANSI, espaces Unicode, fuseau horaire Apache).
+
+Par défaut, quelques centaines de variantes (quelques secondes) ; l'intégration
+continue lance 20 000 fichiers `.evtx` et 20 000 lignes de journal, avec une
+graine différente à chaque exécution, affichée en cas d'échec pour reproduire
+la variante fautive :
+
+```bash
+FUZZ_ITERATIONS=20000 FUZZ_SEED=1234 python -m pytest tests/test_fuzz.py
+```
+
+### Intégration continue
+
 L'intégration continue (GitHub Actions, actions épinglées par empreinte) lance
 à chaque envoi les tests Python et JavaScript, vérifie que les fichiers générés
-(journaux d'exemple, données de la console) sont à jour, et passe les règles
-exportées au validateur Sigma officiel.
+(journaux d'exemple, données de la console) sont à jour, passe les règles
+exportées au validateur Sigma officiel, lance la campagne de fuzzing, et mesure
+la couverture sur EVTX-ATTACK-SAMPLES : le tableau est publié dans le résumé de
+chaque exécution, et les tests échouent si `COVERAGE.md` ne correspond plus aux
+règles.
 
 ## Limites et faux positifs
 

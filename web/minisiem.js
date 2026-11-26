@@ -9,24 +9,38 @@
 
   const MONTHS = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
 
+  // Date validée, ou null (mois inconnu, 31 novembre, 25 h…) : même règle que _ts en Python.
+  // Contrôle en UTC (pas de trou d'heure d'été), puis date locale pour l'affichage.
   function mkDate(mon, day, time, year) {
-    const [h, mi, s] = time.split(":").map(Number);
-    return new Date(year, MONTHS[mon] - 1, +day, h, mi, s);
+    const mo = MONTHS[mon], [h, mi, s] = time.split(":").map(Number), d = +day;
+    if (!mo || !(year >= 1 && year <= 9999)) return null;
+    const u = new Date(0);
+    u.setUTCFullYear(year, mo - 1, d); u.setUTCHours(h, mi, s, 0);
+    if (u.getUTCFullYear() !== year || u.getUTCMonth() !== mo - 1 || u.getUTCDate() !== d ||
+        u.getUTCHours() !== h || u.getUTCMinutes() !== mi || u.getUTCSeconds() !== s) return null;
+    const t = new Date(2000, 0, 1);
+    t.setFullYear(year, mo - 1, d); t.setHours(h, mi, s, 0);
+    return t;
   }
 
   // --- Parsers ------------------------------------------------------------
-  const RE_SYSLOG = /^([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2})\s+(\S+)\s+(\w+)(?:\[(\d+)\])?:\s+(.*)$/;
-  const RE_FAILED = /Failed password for (?:invalid user )?(\S+) from ([\d.:a-fA-F]+)/;
-  const RE_ACCEPT = /Accepted \w+ for (\S+) from ([\d.:a-fA-F]+)/;
-  const RE_INVALID = /Invalid user (\S+) from ([\d.:a-fA-F]+)/;
-  const RE_SUDO_FAIL = /(\S+) : (?:command not allowed|user NOT in sudoers)/;
-  const RE_SUDO = /(\S+) : .*COMMAND=(.*)$/;
+  // Classes explicites (espaces ASCII, « . » sans saut de ligne) : exactement le sens des
+  // expressions Python compilées avec re.ASCII. Le fuzzing différentiel a trouvé des
+  // lignes lues différemment par les deux moteurs avec \s et . par défaut.
+  const RE_SYSLOG = /^([A-Z][a-z]{2})[ \t\n\r\f\v]+(\d{1,2})[ \t\n\r\f\v]+(\d{2}:\d{2}:\d{2})[ \t\n\r\f\v]+([^ \t\n\r\f\v]+)[ \t\n\r\f\v]+(\w+)(?:\[(\d+)\])?:[ \t\n\r\f\v]+([^\n]*)$/;
+  const RE_FAILED = /Failed password for (?:invalid user )?([^ \t\n\r\f\v]+) from ([\d.:a-fA-F]+)/;
+  const RE_ACCEPT = /Accepted \w+ for ([^ \t\n\r\f\v]+) from ([\d.:a-fA-F]+)/;
+  const RE_INVALID = /Invalid user ([^ \t\n\r\f\v]+) from ([\d.:a-fA-F]+)/;
+  // ancrées en début de message, comme en Python (sinon retour arrière quadratique)
+  const RE_SUDO_FAIL = /^[ \t\n\r\f\v]*([^ \t\n\r\f\v]+) : (?:command not allowed|user NOT in sudoers)/;
+  const RE_SUDO = /^[ \t\n\r\f\v]*([^ \t\n\r\f\v]+) : [^\n]*COMMAND=([^\n]*)$/;
 
   function parseAuth(line, year) {
     const m = RE_SYSLOG.exec(line);
     if (!m) return null;
     const [, mon, day, time, host, proc, , msg] = m;
     const ts = mkDate(mon, day, time, year);
+    if (!ts) return null;
     const base = {timestamp: ts, source: "auth.log", host: host, raw: line};
     if (proc === "sshd") {
       let f;
@@ -42,33 +56,35 @@
     return null;
   }
 
-  const RE_APACHE = /^([\d.:a-fA-F]+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"([A-Z]+)\s+(\S+)\s+[^"]*"\s+(\d{3})\s+(\S+)(?:\s+"[^"]*"\s+"([^"]*)")?/;
+  const RE_APACHE = /^([\d.:a-fA-F]+)[ \t\n\r\f\v]+[^ \t\n\r\f\v]+[ \t\n\r\f\v]+[^ \t\n\r\f\v]+[ \t\n\r\f\v]+\[([^\]]+)\][ \t\n\r\f\v]+"([A-Z]+)[ \t\n\r\f\v]+([^ \t\n\r\f\v]+)[ \t\n\r\f\v]+[^"]*"[ \t\n\r\f\v]+(\d{3})[ \t\n\r\f\v]+([^ \t\n\r\f\v]+)(?:[ \t\n\r\f\v]+"[^"]*"[ \t\n\r\f\v]+"([^"]*)")?/;
   const APACHE_MON = MONTHS;
   function parseApache(line) {
     const m = RE_APACHE.exec(line);
     if (!m) return null;
     const tm = /^(\d{2})\/([A-Za-z]{3})\/(\d{4}):(\d{2}):(\d{2}):(\d{2})/.exec(m[2]);
     if (!tm) return null;
-    const ts = new Date(+tm[3], APACHE_MON[tm[2]] - 1, +tm[1], +tm[4], +tm[5], +tm[6]);
+    const ts = mkDate(tm[2], tm[1], `${tm[4]}:${tm[5]}:${tm[6]}`, +tm[3]);   // fuseau ignoré
+    if (!ts) return null;
     const status = +m[5];
     return {timestamp: ts, source: "access.log", event_type: "web_request",
             outcome: status >= 400 ? "failure" : "success", source_ip: m[1],
             method: m[3], url: m[4], status: status, user_agent: m[7] || "-", raw: line};
   }
 
-  const RE_UFW_KV = /\b([A-Z]+)=(\S+)/g;
+  const RE_UFW_KV = /\b([A-Z]+)=([^ \t\n\r\f\v]+)/g;
   function parseUfw(line, year) {
     if (line.indexOf("UFW BLOCK") < 0 && line.toLowerCase().indexOf("iptables") < 0) return null;
     const m = RE_SYSLOG.exec(line);
     if (!m) return null;
     const ts = mkDate(m[1], m[2], m[3], year);
+    if (!ts) return null;
     const kv = {}; let g;
     RE_UFW_KV.lastIndex = 0;
     while ((g = RE_UFW_KV.exec(m[7]))) kv[g[1]] = g[2];
     if (!kv.SRC) return null;
     return {timestamp: ts, source: "ufw.log", event_type: "fw_block", outcome: "blocked",
             host: m[4], source_ip: kv.SRC, proto: kv.PROTO,
-            dest_port: kv.DPT ? +kv.DPT : null, raw: line};
+            dest_port: /^[0-9]{1,5}$/.test(kv.DPT || "") && +kv.DPT <= 65535 ? +kv.DPT : null, raw: line};
   }
 
   const EVTX_MAP = {4625:["win_logon","failure"],4624:["win_logon","success"],
@@ -102,7 +118,8 @@
     } else if (eid === 3) {
       ev.process = data.Image; ev.source_ip = data.SourceIp || null;
       ev.dest_ip = data.DestinationIp || null;
-      ev.dest_port = /^\d+$/.test((data.DestinationPort || "").trim()) ? +data.DestinationPort : null;
+      const port = (data.DestinationPort || "").trim();
+      ev.dest_port = /^[0-9]{1,5}$/.test(port) && +port <= 65535 ? +port : null;
       ev.proto = data.Protocol; ev.target = data.DestinationHostname || null;
     } else if (eid === 10) {
       ev.process = data.SourceImage; ev.target = data.TargetImage;
@@ -152,9 +169,24 @@
   function parseText(text, year) {
     year = year || new Date().getFullYear();
     const events = [];
-    const RE_BLOCK = /<Event\b[\s\S]*?<\/Event>/g;
-    for (const b of text.match(RE_BLOCK) || []) { const e = parseEvtxBlock(b); if (e) events.push(e); }
-    for (const line of text.replace(RE_BLOCK, "\n").split(/\r?\n/)) {
+    // blocs <Event>…</Event> en un seul passage (une expression paresseuse devenait
+    // quadratique sur des ouvertures jamais fermées), le reste lu ligne à ligne
+    const rest = [];
+    let pos = 0;
+    const START = /<Event\b/g;
+    for (;;) {
+      START.lastIndex = pos;
+      const m = START.exec(text);
+      if (!m) break;
+      const end = text.indexOf("</Event>", m.index + 6);
+      if (end < 0) break;
+      rest.push(text.slice(pos, m.index));
+      const e = parseEvtxBlock(text.slice(m.index, end + 8));
+      if (e) events.push(e);
+      pos = end + 8;
+    }
+    rest.push(text.slice(pos));
+    for (const line of rest.join("\n").split(/\r?\n/)) {
       if (!line.trim()) continue;
       const e = parseUfw(line, year) || parseAuth(line, year) || parseApache(line);
       if (e) events.push(e);
@@ -419,9 +451,22 @@
     const FIXED = {3: 1, 4: 1, 5: 2, 6: 2, 7: 4, 8: 4, 9: 8, 10: 8, 11: 4, 12: 8, 13: 4,
                    15: 16, 17: 8, 18: 16, 20: 4, 21: 8};
     const BAD = /[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]/g;
-    const dec16 = new TextDecoder("utf-16le"), dec8 = new TextDecoder("latin1");
+    // drapeau u : un caractère hors BMP (paire de substitution) compte pour un, comme en Python
+    const BAD_NAME = /[^A-Za-z0-9_.:-]/gu, ENTITIES = new Set(["amp", "lt", "gt", "quot", "apos"]);
+    // Limites par enregistrement, identiques à minisiem/evtx.py : un fichier hostile
+    // (fragments imbriqués en cascade) ne peut ni bloquer l'onglet ni saturer la mémoire.
+    const MAX_DEPTH = 64, MAX_WORK = 100000, MAX_OUTPUT = 1 << 20;
+    const dec16 = new TextDecoder("utf-16le");
+    // vrai Latin-1 (le décodeur « latin1 » des navigateurs est en fait Windows-1252)
+    const dec8 = { decode(b) { let s = ""; for (let i = 0; i < b.length; i += 8192)
+      s += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); return s; } };
+    const MAX_FT_SECONDS = 265046774399n;     // 9999-12-31T23:59:59 depuis 1601
     const xmlText = s => s.replace(BAD, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const xmlAttr = s => xmlText(s).replace(/"/g, "&quot;");
+    const xmlName = s => { s = s.replace(BAD_NAME, "_"); return /^[A-Za-z_]/.test(s) ? s : "_" + s; };
+    const charOf = n => (n === 9 || n === 10 || n === 13 || (n >= 0x20 && n <= 0xd7ff) ||
+                         (n >= 0xe000 && n <= 0xfffd)) ? String.fromCharCode(n) : "";
+    class Limit extends Error {}
     const hexOf = (b) => Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
 
     function isEvtx(bytes) {
@@ -432,13 +477,26 @@
 
     function filetime(ticks) {                       // BigInt, centaines de ns depuis 1601
       const sec = ticks / 10000000n, frac = ticks % 10000000n;
+      if (sec > MAX_FT_SECONDS) throw new Error("date hors limites");
       const d = new Date(Number(sec - 11644473600n) * 1000);
       return d.toISOString().slice(0, 19) + "." + frac.toString().padStart(7, "0") + "Z";
     }
 
     function Chunk(b) { this.b = b; this.dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
-                        this.names = new Map(); this.templates = new Map(); }
+                        this.names = new Map(); this.templates = new Map();
+                        this.depth = 0; this.work = 0; this.outLen = 0; }
     const C = Chunk.prototype;
+    C.enter = function () {
+      this.depth++; this.spend();
+      if (this.depth > MAX_DEPTH) throw new Limit("imbrication trop profonde");
+    };
+    C.leave = function () { this.depth--; };
+    C.spend = function () { if (++this.work > MAX_WORK) throw new Limit("enregistrement trop complexe"); };
+    C.emit = function (out, text) {
+      this.outLen += text.length;
+      if (this.outLen > MAX_OUTPUT) throw new Limit("enregistrement trop volumineux");
+      out.push(text);
+    };
     C.u16 = function (p) { return this.dv.getUint16(p, true); };
     C.u32 = function (p) { return this.dv.getUint32(p, true); };
     C.utf16 = function (p, n) { return dec16.decode(this.b.subarray(p, p + 2 * n)); };
@@ -454,13 +512,22 @@
       while (pos + 28 <= free) {
         const magic = this.u32(pos), size = this.u32(pos + 4);
         if (magic !== REC || size < 28 || pos + size > this.b.length) break;
-        try { out.push(this.renderFragment(pos + 24)); } catch (e) { /* enregistrement abîmé */ }
+        this.depth = 0; this.work = 0; this.outLen = 0;
+        try { out.push(this.renderFragment(pos + 24)); } catch (e) { /* abîmé ou hostile : ignoré */ }
         pos += size;
       }
       return out;
     };
-    C.renderFragment = function (pos) { const out = []; this.render(this.fragment(pos)[0], [], out); return out.join(""); };
+    C.renderFragment = function (pos) {
+      this.enter();
+      try { const out = []; this.render(this.fragment(pos)[0], [], out); return out.join(""); }
+      finally { this.leave(); }
+    };
     C.fragment = function (pos) {
+      this.enter();
+      try { return this.fragmentBody(pos); } finally { this.leave(); }
+    };
+    C.fragmentBody = function (pos) {
       const nodes = [];
       for (;;) {
         if (pos >= this.b.length) throw new Error("fin inattendue");
@@ -473,6 +540,10 @@
       }
     };
     C.element = function (pos) {
+      this.enter();
+      try { return this.elementBody(pos); } finally { this.leave(); }
+    };
+    C.elementBody = function (pos) {
       const hasAttrs = this.b[pos] & 0x40;
       pos += 7;
       let name; [name, pos] = this.name(this.u32(pos), pos + 4);
@@ -511,16 +582,15 @@
         } else if (tok === 0x0d || tok === 0x0e) {
           out.push(["subst", this.u16(pos + 1), tok === 0x0e]); pos += 4;
         } else if (base === 0x08) {
-          out.push(["raw", "&#" + this.u16(pos + 1) + ";"]); pos += 3;
+          out.push(["text", charOf(this.u16(pos + 1))]); pos += 3;
         } else if (base === 0x09) {
-          let en; [en, pos] = this.name(this.u32(pos + 1), pos + 5); out.push(["raw", "&" + en + ";"]);
+          let en; [en, pos] = this.name(this.u32(pos + 1), pos + 5);
+          out.push(ENTITIES.has(en) ? ["raw", "&" + en + ";"] : ["text", "&" + en + ";"]);
         } else if (base === 0x07) {
           const n = this.u16(pos + 1); out.push(["text", this.utf16(pos + 3, n)]); pos += 3 + 2 * n;
-        } else if (tok === 0x0a) {
-          let target; [target, pos] = this.name(this.u32(pos + 1), pos + 5);
-          let data = "";
-          if (this.b[pos] === 0x0b) { const n = this.u16(pos + 1); data = this.utf16(pos + 3, n); pos += 3 + 2 * n; }
-          out.push(["raw", "<?" + target + " " + data + "?>"]);
+        } else if (tok === 0x0a) {                     // instruction de traitement : ignorée
+          pos = this.name(this.u32(pos + 1), pos + 5)[1];
+          if (this.b[pos] === 0x0b) pos += 3 + 2 * this.u16(pos + 1);
         } else {
           if (!out.length) throw new Error("valeur attendue");
           return [out, pos];
@@ -543,23 +613,29 @@
     };
     C.render = function (nodes, values, out) {
       for (const node of nodes) {
+        this.spend();
         if (node[0] === "tmpl") { this.render(node[1], node[2], out); continue; }
         if (node[0] !== "elem") continue;
-        const [, name, attrs, children] = node;
-        out.push("<" + name);
-        for (const [an, content] of attrs) {
+        const name = xmlName(node[1]), attrs = node[2], children = node[3];
+        this.emit(out, "<" + name);
+        const seen = new Set();
+        for (const [an0, content] of attrs) {
+          const an = xmlName(an0);
           const text = this.textOf(content, values);
-          if (text !== null) out.push(" " + an + '="' + xmlAttr(text) + '"');
+          if (text !== null && !seen.has(an)) { seen.add(an); this.emit(out, " " + an + '="' + xmlAttr(text) + '"'); }
         }
-        if (children === null) { out.push("/>"); continue; }
-        out.push(">");
-        for (const c of children) {
-          if (c[0] === "elem" || c[0] === "tmpl") this.render([c], values, out);
-          else if (c[0] === "subst") out.push(this.valueXml(values, c[1]));
-          else if (c[0] === "raw") out.push(c[1]);
-          else out.push(xmlText(c[1]));
-        }
-        out.push("</" + name + ">");
+        if (children === null) { this.emit(out, "/>"); continue; }
+        this.emit(out, ">");
+        this.enter();
+        try {
+          for (const c of children) {
+            if (c[0] === "elem" || c[0] === "tmpl") this.render([c], values, out);
+            else if (c[0] === "subst") { this.spend(); this.emit(out, this.valueXml(values, c[1])); }
+            else if (c[0] === "raw") this.emit(out, c[1]);
+            else this.emit(out, xmlText(c[1]));
+          }
+        } finally { this.leave(); }
+        this.emit(out, "</" + name + ">");
       }
     };
     C.textOf = function (content, values) {
@@ -584,9 +660,23 @@
       const [type, pos, size] = values[i];
       if (type === T.NULL || size === 0) return null;
       const raw = this.b.subarray(pos, pos + size);
+      if (raw.length < size) throw new Error("valeur tronquée");
+      if (!(type & 0x80) && size < (FIXED[type] || 0)) throw new Error("valeur trop courte pour son type");
       if (type & 0x80) return splitArray(type & 0x7f, raw).map(x => scalar(type & 0x7f, x)).join(", ");
       return scalar(type, raw);
     };
+
+    // réel en 6 chiffres significatifs, comme « %.6g » en Python
+    function fmtReal(v) {
+      if (Number.isNaN(v)) return "nan";
+      if (!Number.isFinite(v)) return v > 0 ? "inf" : "-inf";
+      if (v === 0) return Object.is(v, -0) ? "-0" : "0";
+      const [mant, exp] = v.toExponential(5).split("e");
+      const e = +exp;
+      if (e < -4 || e >= 6)
+        return mant.replace(/\.?0+$/, "") + "e" + (e < 0 ? "-" : "+") + String(Math.abs(e)).padStart(2, "0");
+      return v.toFixed(5 - e).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+    }
 
     function splitArray(type, raw) {
       if (type === T.WSTR) return dec16.decode(raw).split("\0").filter(Boolean).map(s => {
@@ -614,8 +704,8 @@
         case T.H64: return "0x" + dv.getBigUint64(0, true).toString(16).padStart(16, "0");
         case T.SIZET: { let v = 0n; for (let i = raw.length - 1; i >= 0; i--) v = (v << 8n) | BigInt(raw[i]); return "0x" + v.toString(16).padStart(2 * raw.length, "0"); }
         case T.BOOL: return dv.getUint32(0, true) ? "true" : "false";
-        case T.R32: return String(dv.getFloat32(0, true));
-        case T.R64: return String(dv.getFloat64(0, true));
+        case T.R32: return fmtReal(dv.getFloat32(0, true));
+        case T.R64: return fmtReal(dv.getFloat64(0, true));
         case T.FT: return filetime(dv.getBigUint64(0, true));
         case T.ST: {
           const v = i => dv.getUint16(2 * i, true), p = (n, w) => String(n).padStart(w, "0");
@@ -627,6 +717,7 @@
                  "-" + hexOf(raw.subarray(8, 10)).toUpperCase() + "-" + hexOf(raw.subarray(10, 16)).toUpperCase() + "}";
         }
         case T.SID: {
+          if (raw.length < 8 || raw.length < 8 + 4 * raw[1]) throw new Error("SID tronqué");
           const count = raw[1];
           let auth = 0; for (let i = 2; i < 8; i++) auth = auth * 256 + raw[i];
           const subs = []; for (let i = 0; i < count; i++) subs.push(dv.getUint32(8 + 4 * i, true));
